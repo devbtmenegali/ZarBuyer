@@ -1,29 +1,36 @@
 from src.db.supabase_client import get_supabase_client
+from datetime import datetime
 
 class InventoryDataService:
     def __init__(self):
         self.supabase = get_supabase_client()
 
     def get_brand_summary(self, brand: str = None) -> list:
-        """
-        Busca os produtos agrupados. Para fins de IA, pegamos 
-        uma amostra representativa (os mais caros/com mais estoque) da marca.
-        """
+        # Pega de todos os tempos ordenado
         query = self.supabase.table('inventory_snapshots') \
             .select('*, products(sku, name, brand)') \
+            .order('snapshot_date', desc=True) \
             .order('stock_balance', desc=True) \
-            .limit(100)
+            .limit(300)
             
         resp = query.execute()
         data = resp.data
         
-        # Filtra pela marca se fornecida (case insensitive basic)
-        if brand:
-            data = [d for d in data if d['products'] and brand.lower() in str(d['products'].get('brand', '')).lower()]
-            
-        # Simplifica o payload para a IA (economizar tokens)
-        simplified = []
+        # Filtra marca e mantém apenas o registro mais novo por produto
+        seen = set()
+        unique_latest_data = []
         for row in data:
+            if not row['products']: continue
+            if brand and brand.lower() not in str(row['products'].get('brand', '')).lower(): continue
+            
+            p_name = row['products']['name']
+            if p_name not in seen:
+                seen.add(p_name)
+                unique_latest_data.append(row)
+                if len(unique_latest_data) >= 100: break
+            
+        simplified = []
+        for row in unique_latest_data:
             simplified.append({
                 "Nome": row['products']['name'],
                 "Marca": row['products']['brand'],
@@ -34,17 +41,27 @@ class InventoryDataService:
         return simplified
 
     def get_highest_stock_items(self) -> list:
-        """
-        Busca os itens com maior custo imobilizado ou quantidade p/ análise de Bundling e Dead Stock.
-        """
         query = self.supabase.table('inventory_snapshots') \
             .select('*, products(name, brand)') \
+            .order('snapshot_date', desc=True) \
             .order('total_cost', desc=True) \
-            .limit(50)
+            .limit(300)
             
         resp = query.execute()
-        return [{
-            "Nome": r['products']['name'],
-            "Quantidade": r['stock_balance'],
-            "Valor_Parado": r['total_cost']
-        } for r in resp.data]
+        
+        # Manter apenas a última ocorrência no banco para evitar somar 2 dias do mesmo produto
+        seen = set()
+        unique_latest_data = []
+        for r in resp.data:
+            if not r['products']: continue
+            p_name = r['products']['name']
+            if p_name not in seen:
+                seen.add(p_name)
+                unique_latest_data.append({
+                    "Nome": p_name,
+                    "Quantidade": r['stock_balance'],
+                    "Valor_Parado": r['total_cost']
+                })
+                if len(unique_latest_data) >= 50: break
+                
+        return unique_latest_data
