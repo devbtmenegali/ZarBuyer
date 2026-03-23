@@ -58,3 +58,24 @@ CREATE TABLE IF NOT EXISTS public.invoices (
     has_divergences BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Tabela de Itens do Pedido de Compra (Grava cada linha do PDF do Representante)
+CREATE TABLE IF NOT EXISTS public.purchase_order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    purchase_order_id UUID REFERENCES public.purchase_orders(id) ON DELETE CASCADE,
+    product_name VARCHAR(255) NOT NULL,
+    quantity NUMERIC(15,2) NOT NULL,
+    unit_price NUMERIC(15,2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabela de Itens da Nota Fiscal (Grava cada linha do XML da NFe)
+CREATE TABLE IF NOT EXISTS public.invoice_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    invoice_id UUID REFERENCES public.invoices(id) ON DELETE CASCADE,
+    product_name VARCHAR(255) NOT NULL,
+    ncm VARCHAR(50),
+    quantity NUMERIC(15,2) NOT NULL,
+    unit_price NUMERIC(15,2) NOT NULL, -- Preço unitário real da NF deduzindo descontos
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);

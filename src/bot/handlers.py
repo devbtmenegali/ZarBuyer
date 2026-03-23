@@ -15,14 +15,40 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
     
-    if not doc.file_name.endswith('.xlsx'):
-        await update.message.reply_text("Por favor, envie um arquivo no formato Excel (.xlsx).")
+    allowed_extensions = ('.xlsx', '.xml', '.pdf')
+    if not doc.file_name.lower().endswith(allowed_extensions):
+        await update.message.reply_text("Por favor, envie um arquivo Excel (.xlsx), Nota Fiscal (.xml) ou Pedido (.pdf).")
         return
         
-    await update.message.reply_text("Recebi a planilha! Iniciando processamento e leitura...")
+    await update.message.reply_text(f"📥 Recebi o arquivo: {doc.file_name}. Acionando sensores adequados...")
     
     try:
         # Baixar o arquivo do Telegram
+        file_obj = await context.bot.get_file(doc.file_id)
+        temp_path = f"/tmp/{doc.file_name}"
+        await file_obj.download_to_drive(temp_path)
+        
+        if doc.file_name.lower().endswith('.xml'):
+            from src.services.xml_parser import NfeParser
+            parser = NfeParser(temp_path)
+            nf_data = parser.parse()
+            
+            # TODO: Salvar no Supabase
+            
+            await update.message.reply_text(
+                f"✅ *Nota Fiscal Lida com Sucesso!*\n"
+                f"🏢 Fornecedor: {nf_data['supplier_name']}\n"
+                f"🧾 Nota: {nf_data['invoice_number']}\n"
+                f"📦 Total de Itens Diferentes: {len(nf_data['items'])}\n"
+                f"💰 Valor Total: R$ {nf_data['total_amount']:,.2f}",
+                parse_mode="Markdown"
+            )
+            # Remove arquivo temp
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return
+
+        # ===== ROTINA ANTIGA DE EXCEL (.xlsx) ABAIXO =====
         file_obj = await context.bot.get_file(doc.file_id)
         temp_path = f"/tmp/{doc.file_name}"
         await file_obj.download_to_drive(temp_path)
@@ -121,7 +147,7 @@ async def cmd_analisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Encontrei os produtos. Acionando a Inteligência ZAR (Gemini) para diagnosticar... 🤖")
         
         agent = ZarAIAgent()
-        report = agent.analyze_inventory_health(data)
+        report = agent.analyze_brand_summary(data, brandFilter)
         
         for chunk in chunk_message(report):
             await update.message.reply_text(chunk, parse_mode="HTML")

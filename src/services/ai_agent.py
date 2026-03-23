@@ -66,8 +66,47 @@ class ZarAIAgent:
             return response.text
         except Exception as e:
             logger.error(f"Erro ao chamar o Gemini: {e}")
-            return "❌ Erro ao processar inteligência do estoque com o ZAR AI."
+            return f"❌ Erro ao processar inteligência do estoque com o ZAR AI: {str(e)}"
             
+    def analyze_brand_summary(self, products_data: list, brand: str) -> str:
+        total_items = sum([float(p.get("Estoque_Qtd", p.get("Quantidade", 0))) for p in products_data])
+        total_value = sum([float(p.get("Custo_Total", p.get("Valor_Parado", 0))) for p in products_data])
+        
+        # Média de venda calculada no python p/ não alucinar
+        precos = [float(p.get("Preco_Venda", 0)) for p in products_data if float(p.get("Preco_Venda", 0)) > 0]
+        media_venda = sum(precos) / len(precos) if precos else 0
+        
+        brand_name = (brand or "Geral").upper()
+        
+        prompt = f"""
+        Você é o ZAR. Resuma a marca {brand_name} no formato EXATO abaixo:
+
+        📊 RESUMO: {brand_name}
+        • Valor Total em Estoque: R$ {total_value:,.2f}
+        • Número de Itens em Estoque: {int(total_items)}
+        • Média de Preço de Venda: R$ {media_venda:,.2f}
+        
+        Com base na amostra de dados, separe os produtos em 2 listas diretas:
+        🛒 ITENS "MAIS VENDIDOS" / ALTO GIRO (Estoque Baixo)
+        - [Nome do Produto]
+        
+        📦 ITENS DEAD STOCK / MICOS (Estoque Alto parado)
+        - [Nome do Produto]
+        
+        DADOS PARA ANÁLISE: {json.dumps(products_data[:200], default=str)}
+        
+        [REGRA]: ZERO Markdown (nenhum * ou #). Fiel ao formato acima, sinta-se livre para usar emojis. Nada de enrolação inicial.
+        """
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.1)
+            )
+            return response.text
+        except Exception as e:
+            return f"❌ Erro na análise de Marca: {str(e)}"
+
     def analyze_negotiation(self, current_margin: float, proposed_cost: float, selling_price: float) -> str:
         """
         Ruptura de margem e reprecificação dinâmica numa negociação ao vivo.
