@@ -99,38 +99,44 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_analisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from src.services.inventory_analysis import InventoryDataService
-    from src.services.ai_agent import ZarAIAgent
-    
-    args = context.args
-    brandFilter = " ".join(args) if args else None
-    
-    await update.message.reply_text("Consultando o banco de dados... 🔎")
-    
-    db_service = InventoryDataService()
-    data = db_service.get_brand_summary(brandFilter)
-    
-    if not data:
-        await update.message.reply_text("Não encontrei produtos desta marca no banco.")
-        return
+    try:
+        from src.services.inventory_analysis import InventoryDataService
+        from src.services.ai_agent import ZarAIAgent
         
-    await update.message.reply_text(f"Encontrei os produtos. Acionando a Inteligência ZAR (Gemini) para diagnosticar... 🤖")
-    
-    agent = ZarAIAgent()
-    report = agent.analyze_inventory_health(data)
-    
-    await update.message.reply_text(report, parse_mode='Markdown')
+        args = context.args
+        brandFilter = " ".join(args) if args else None
+        
+        await update.message.reply_text("Consultando o banco de dados... 🔎")
+        
+        db_service = InventoryDataService()
+        data = db_service.get_brand_summary(brandFilter)
+        
+        if not data:
+            await update.message.reply_text("Não encontrei produtos desta marca no banco.")
+            return
+            
+        await update.message.reply_text(f"Encontrei os produtos. Acionando a Inteligência ZAR (Gemini) para diagnosticar... 🤖")
+        
+        agent = ZarAIAgent()
+        report = agent.analyze_inventory_health(data)
+        
+        await update.message.reply_text(report)
+    except Exception as e:
+        await update.message.reply_text(f"Erro fatal em analisar: {str(e)}")
 
 async def cmd_micos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from src.services.inventory_analysis import InventoryDataService
-    from src.services.ai_agent import ZarAIAgent
-    
-    await update.message.reply_text("Buscando o maior capital imobilizado para caça aos 'Micos' (Dead Stock) e Combos... 💸")
-    
-    db_service = InventoryDataService()
-    data = db_service.get_highest_stock_items()
-    
-    agent = ZarAIAgent()
-    report = agent.analyze_inventory_health(data)
-    
-    await update.message.reply_text(report, parse_mode='Markdown')
+    try:
+        from src.services.inventory_analysis import InventoryDataService
+        from src.services.ai_agent import ZarAIAgent
+        
+        await update.message.reply_text("Buscando o maior capital imobilizado para caça aos 'Micos' (Dead Stock) e Combos... 💸")
+        
+        db_service = InventoryDataService()
+        data = db_service.get_highest_stock_items()
+        
+        agent = ZarAIAgent()
+        report = agent.analyze_inventory_health(data)
+        
+        await update.message.reply_text(report)
+    except Exception as e:
+        await update.message.reply_text(f"Erro fatal em micos: {str(e)}")
