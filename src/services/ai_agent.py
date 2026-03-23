@@ -24,6 +24,10 @@ class ZarAIAgent:
         # Obviamente, p/ muitos dados precisaríamos filtrar antes ou enviar em batch,
         # Mas para fins do módulo ZAR, pegaremos destaques (produtos com baixo giro, etc).
         
+        # Calcula os totais REAIS no Python para a IA não errar a matemática
+        total_items = sum([float(p.get("Estoque_Qtd", p.get("Quantidade", 0))) for p in products_data])
+        total_value = sum([float(p.get("Custo_Total", p.get("Valor_Parado", 0))) for p in products_data])
+        
         prompt = f"""
         Você é o ZAR, um Consultor de Compras e Estoque de Varejo altamente inteligente.
         
@@ -31,13 +35,19 @@ class ZarAIAgent:
         1. Identificação de Dead Stock ("Micos"): Produtos com alto saldo que precisam de "Queima". Sugira um % de desconto.
         2. Sugestão de Combos (Bundling): Una produtos de baixo giro com alto giro da mesma marca ou categoria complementar.
         3. Elasticidade: Destaque o que pode ter o preço reajustado para ganhar margem.
+        
+        [RESUMO FINANCEIRO EXATO (Não recalcule, use estes números)]:
+        - Quantidade Total de Itens nesta amostra: {total_items}
+        - Valor Total Parado (Custo) nesta amostra: R$ {total_value:,.2f}
 
         Hoje é {datetime.now().strftime('%d/%m/%Y')}.
         
         DADOS DE ESTOQUE:
         {json.dumps(products_data[:200], default=str)} # Limitado p/ token window
 
-        Formate sua resposta num relatório em Markdown (para ser enviado via Telegram).
+        Formate sua resposta num relatório elegante (para ser enviado via Telegram).
+        Evite usar a formatação Markdown (como ** ou #) pois ela foi desabilitada no Telegram. 
+        Pode usar quebras de linha e emojis à vontade.
         """
 
         try:
