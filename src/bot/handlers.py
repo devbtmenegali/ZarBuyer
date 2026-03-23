@@ -98,6 +98,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Ocorreu um erro no processamento do arquivo: {str(e)}")
 
 
+def chunk_message(text, size=4000):
+    return [text[i:i+size] for i in range(0, len(text), size)]
+
 async def cmd_analisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         from src.services.inventory_analysis import InventoryDataService
@@ -120,9 +123,11 @@ async def cmd_analisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         agent = ZarAIAgent()
         report = agent.analyze_inventory_health(data)
         
-        await update.message.reply_text(report)
+        for chunk in chunk_message(report):
+            await update.message.reply_text(chunk, parse_mode="HTML")
+            
     except Exception as e:
-        await update.message.reply_text(f"Erro fatal em analisar: {str(e)}")
+        await update.message.reply_text(f"Erro fatal em analisar: {str(e)[:500]}")
 
 async def cmd_micos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -137,6 +142,8 @@ async def cmd_micos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         agent = ZarAIAgent()
         report = agent.analyze_inventory_health(data)
         
-        await update.message.reply_text(report)
+        for chunk in chunk_message(report):
+            await update.message.reply_text(chunk, parse_mode="HTML")
+            
     except Exception as e:
-        await update.message.reply_text(f"Erro fatal em micos: {str(e)}")
+        await update.message.reply_text(f"Erro fatal em micos: {str(e)[:500]}")
