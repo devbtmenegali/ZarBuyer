@@ -25,14 +25,18 @@ if __name__ == '__main__':
         
     application = ApplicationBuilder().token(TOKEN).build()
     
-    from src.bot.handlers import start_command, handle_document
+    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos
     from telegram.ext import MessageHandler, filters
     
     start_handler = CommandHandler('start', start_command)
+    analisar_handler = CommandHandler('analisar', cmd_analisar)
+    micos_handler = CommandHandler('micos', cmd_micos)
     doc_handler = MessageHandler(filters.Document.ALL, handle_document)
     
     application.add_handler(start_handler)
+    application.add_handler(analisar_handler)
+    application.add_handler(micos_handler)
     application.add_handler(doc_handler)
     
-    logger.info("Bot ZAR iniciado!")
+    logger.info("Bot ZAR iniciado com Inteligência Artificial!")
     application.run_polling()
