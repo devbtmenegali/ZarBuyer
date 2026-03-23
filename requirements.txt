@@ -2,5 +2,5 @@ python-telegram-bot>=20.0
 supabase
 pandas
 openpyxl
-google-generativeai
+google-genai
 python-dotenv
