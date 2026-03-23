@@ -1,5 +1,28 @@
 import logging
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is runing!")
+        
+    def log_message(self, format, *args):
+        pass # Silenciar logs do servidor fake
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    try:
+        server = HTTPServer(('0.0.0.0', port), DummyHandler)
+        server.serve_forever()
+    except Exception:
+        pass
+
+if os.environ.get("RENDER") or os.environ.get("PORT"):
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
