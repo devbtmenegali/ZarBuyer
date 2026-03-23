@@ -36,6 +36,11 @@ class ZarAIAgent:
         2. Sugestão de Combos (Bundling): Una produtos de baixo giro com alto giro da mesma marca ou categoria complementar.
         3. Elasticidade: Destaque o que pode ter o preço reajustado para ganhar margem.
         
+        [DIRETRIZ MÁXIMA PARA O ZAR]:
+        - SEJA EXTREMAMENTE OBJETIVO E DIRETO. Nada de textos longos, parágrafos genéricos ou enrolação ("yapping").
+        - Seus relatórios devem ser curtos, focados na prática: "O que fazer", "Qual o produto" e "Qual o número".
+        - Use listas curtas (bullet points). Menos palavras, mais ação. O gestor tem pouco tempo.
+        
         [RESUMO FINANCEIRO EXATO (Não recalcule, use estes números)]:
         - Quantidade Total de Itens nesta amostra: {total_items}
         - Valor Total Parado (Custo) nesta amostra: R$ {total_value:,.2f}
@@ -45,9 +50,9 @@ class ZarAIAgent:
         DADOS DE ESTOQUE:
         {json.dumps(products_data[:200], default=str)} # Limitado p/ token window
 
-        Formate sua resposta num relatório elegante (para ser enviado via Telegram).
+        Responda da forma mais curta e objetiva possível.
         Evite usar a formatação Markdown (como ** ou #) pois ela foi desabilitada no Telegram. 
-        Pode usar quebras de linha e emojis à vontade.
+        Pode usar quebras de linha e emojis, mas sem poluir.
         """
 
         try:
