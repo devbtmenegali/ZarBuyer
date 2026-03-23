@@ -131,6 +131,44 @@ class ZarAIAgent:
             return response.text
         except Exception as e:
             return f"❌ Erro ZAR: {str(e)}"
+            
+    def parse_purchase_order_pdf(self, pdf_path: str) -> str:
+        """
+        Usa o File API do Gemini para ler um Pedido de Compra em PDF e estruturar em texto legível.
+        """
+        try:
+            # Faz o upload do documento pro Google temporariamente
+            uploaded_file = self.client.files.upload(file=pdf_path)
+            
+            prompt = """
+            Você é um leitor e auditor de pedidos de compra da empresa do usuário. 
+            Identifique e extraia do documento anexado (um pedido de representante/fábrica):
+            1. Nome da Fábrica / Fornecedor
+            2. Valor Total do Pedido
+            3. Lista de Produtos faturados
+            
+            Formate sua saída EXATAMENTE como este modelo limpo e objetivo, sem Markdown:
+            
+            📋 PEDIDO LIDO COM SUCESSO!
+            🏢 Fornecedor: [Nome da Fábrica]
+            💰 Total Pedido: R$ [Valor Total]
+            
+            📦 ITENS DO PEDIDO (Amostra):
+            - [Qtd]un | [Nome do Produto] | Custo: R$ [Valor Unitário]
+            - [Qtd]un | [Nome do Produto] | Custo: R$ [Valor Unitário]
+            
+            [AVISO]: Mantenha os nomes como constam no PDF. Se houver muitos itens, liste todos os encontrados.
+            """
+            
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=[uploaded_file, prompt],
+                config=types.GenerateContentConfig(temperature=0.1)
+            )
+            
+            return response.text
+        except Exception as e:
+            return f"❌ ZAR falhou ao enxergar o PDF: {str(e)[:500]}"
 
 # agent = ZarAIAgent()
 # report = agent.analyze_inventory_health(dados)

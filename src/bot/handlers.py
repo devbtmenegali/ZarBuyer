@@ -48,6 +48,22 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 os.remove(temp_path)
             return
 
+        elif doc.file_name.lower().endswith('.pdf'):
+            from src.services.ai_agent import ZarAIAgent
+            
+            await update.message.reply_text("👁️ Ativando a Visão Computacional do ZAR para ler seu PDF...")
+            agent = ZarAIAgent()
+            pdf_report = agent.parse_purchase_order_pdf(temp_path)
+            
+            # TODO: Salvar no Supabase a Ordem de Compra
+            
+            for chunk in chunk_message(pdf_report):
+                await update.message.reply_text(chunk, parse_mode="HTML")
+                
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return
+
         # ===== ROTINA ANTIGA DE EXCEL (.xlsx) ABAIXO =====
         file_obj = await context.bot.get_file(doc.file_id)
         temp_path = f"/tmp/{doc.file_name}"
