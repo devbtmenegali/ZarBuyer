@@ -132,43 +132,84 @@ class ZarAIAgent:
         except Exception as e:
             return f"❌ Erro ZAR: {str(e)}"
             
-    def parse_purchase_order_pdf(self, pdf_path: str) -> str:
+    def parse_purchase_order_pdf(self, pdf_path: str) -> dict:
         """
-        Usa o File API do Gemini para ler um Pedido de Compra em PDF e estruturar em texto legível.
+        Usa o File API do Gemini para ler um Pedido de Compra em PDF e extrair os DADOS (JSON).
         """
         try:
-            # Faz o upload do documento pro Google temporariamente
             uploaded_file = self.client.files.upload(file=pdf_path)
             
             prompt = """
-            Você é um leitor e auditor de pedidos de compra da empresa do usuário. 
-            Identifique e extraia do documento anexado (um pedido de representante/fábrica):
-            1. Nome da Fábrica / Fornecedor
-            2. Valor Total do Pedido
-            3. Lista de Produtos faturados
+            Você é um sistema extrator de dados de pedidos de compra corporativos. 
+            Identifique e extraia do documento anexado os detalhes financeiros do pedido.
             
-            Formate sua saída EXATAMENTE como este modelo limpo e objetivo, sem Markdown:
-            
-            📋 PEDIDO LIDO COM SUCESSO!
-            🏢 Fornecedor: [Nome da Fábrica]
-            💰 Total Pedido: R$ [Valor Total]
-            
-            📦 ITENS DO PEDIDO (Amostra):
-            - [Qtd]un | [Nome do Produto] | Custo: R$ [Valor Unitário]
-            - [Qtd]un | [Nome do Produto] | Custo: R$ [Valor Unitário]
-            
-            [AVISO]: Mantenha os nomes como constam no PDF. Se houver muitos itens, liste todos os encontrados.
+            Sua saída deve ser EXATAMENTE um objeto JSON válido neste formato:
+            {
+                "supplier_name": "Nome Limpo da Fábrica (Ex: NIAZITEX)",
+                "total_amount": 10412.13,
+                "items": [
+                    {
+                        "product_name": "Nome Completo do Produto",
+                        "quantity": 4.0,
+                        "unit_price": 84.00
+                    }
+                ]
+            }
+            Apenas extraia os valores em números Float ou Inteiros (sem R$). 
             """
             
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=[uploaded_file, prompt],
-                config=types.GenerateContentConfig(temperature=0.1)
+                config=types.GenerateContentConfig(
+                    temperature=0.0,
+                    response_mime_type="application/json"
+                )
             )
             
+            return json.loads(response.text)
+        except Exception as e:
+            logger.error(f"Erro ao extrair JSON do PDF: {e}")
+            return None
+
+    def audit_invoice_vs_order(self, order_data: dict, invoice_data: dict) -> str:
+        """
+        Inteligência super avançada que compara nota fiscal com pedido e acha fraudes/divergências.
+        """
+        prompt = f"""
+        Você é o ZAR AUDITOR FINANCEIRO. Sua única missão é proteger o dinheiro do seu chefe, Bruno.
+        Você verá os dados de um PEDIDO DE COMPRA original e os dados da NOTA FISCAL FATURADA.
+        
+        Sua missão é realizar o MATCHING (cruzamento) inteligente (pois os nomes podem estar ligeiramente diferentes na NF e no PDF) e encontrar DIVERGÊNCIAS.
+        
+        PEDIDO DE COMPRA ORIGINAL:
+        - Fornecedor: {order_data.get('supplier_name')}
+        - Valor Total: R$ {order_data.get('total_amount')}
+        - Itens: {json.dumps(order_data.get('items', []), default=str)}
+        
+        NOTA FISCAL RECEBIDA (FATURADA):
+        - Fornecedor: {invoice_data.get('supplier_name')}
+        - Valor Total: R$ {invoice_data.get('total_amount')}
+        - Itens Faturados: {json.dumps(invoice_data.get('items', []), default=str)}
+        
+        REGRAS DE AUDITORIA:
+        1. Alerte se a quantidade faturada for diferente (faltou entregar algo?).
+        2. Alerte MUITO FORTE se o 'unit_price' faturado for MAIOR que o do pedido (aumentaram o preço!).
+        3. Fique tranquilo se faltou produto na NF, apenas informe o corte. Mas seja implacável com preço de custo alterado.
+        
+        Formate seu relatório usando emojis. SE NÃO HOUVER erro (Tudo perfeito), parabenize e diga que a Nota Fiscal bateu 100% centavo por centavo com o PDF do pedido.
+        SE HOUVER DIVERGÊNCIA, destaque em bullet points o Produto, Preço no Pedido, Preço na NF e a Diferença cobrada a mais!
+        [REGRA DE ESTILO]: Nada de enrolação. SEJA DIRETO! Zero Markdown de formatação pesada (sem asteriscos ou hashtag). 
+        """
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.1)
+            )
             return response.text
         except Exception as e:
-            return f"❌ ZAR falhou ao enxergar o PDF: {str(e)[:500]}"
+            return f"❌ Erro na Auditoria Cruzada ZAR: {str(e)}"
 
 # agent = ZarAIAgent()
 # report = agent.analyze_inventory_health(dados)

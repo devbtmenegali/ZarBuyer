@@ -30,36 +30,122 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if doc.file_name.lower().endswith('.xml'):
             from src.services.xml_parser import NfeParser
+            from src.services.ai_agent import ZarAIAgent
+            from datetime import datetime
+            
             parser = NfeParser(temp_path)
             nf_data = parser.parse()
             
-            # TODO: Salvar no Supabase
+            supabase = get_supabase_client()
+            def get_sup_id(name):
+                r = supabase.table('suppliers').select('id').ilike('name', f"%{name[:10]}%").execute()
+                if r.data: return r.data[0]['id']
+                ins = supabase.table('suppliers').insert({'name': name}).execute()
+                return ins.data[0]['id']
+                
+            sup_id = get_sup_id(nf_data['supplier_name'])
             
-            await update.message.reply_text(
-                f"✅ *Nota Fiscal Lida com Sucesso!*\n"
-                f"🏢 Fornecedor: {nf_data['supplier_name']}\n"
-                f"🧾 Nota: {nf_data['invoice_number']}\n"
-                f"📦 Total de Itens Diferentes: {len(nf_data['items'])}\n"
-                f"💰 Valor Total: R$ {nf_data['total_amount']:,.2f}",
-                parse_mode="Markdown"
-            )
-            # Remove arquivo temp
+            # Procura Pedido Aberto
+            order_data = None
+            pending = supabase.table('purchase_orders').select('*').eq('supplier_id', sup_id).eq('status', 'PENDING').order('created_at', desc=True).limit(1).execute()
+            
+            p_order_id = None
+            if pending.data:
+                p_order_id = pending.data[0]['id']
+                o_items = supabase.table('purchase_order_items').select('*').eq('purchase_order_id', p_order_id).execute()
+                
+                # Vamos calcular o total baseado nos itens para suprir a falta da coluna total no DB original
+                sum_total = sum([float(i['quantity']) * float(i['unit_price']) for i in o_items.data])
+                order_data = {
+                    "supplier_name": nf_data['supplier_name'],
+                    "total_amount": sum_total,
+                    "items": o_items.data
+                }
+            
+            inv_resp = supabase.table('invoices').insert({
+                "purchase_order_id": p_order_id,
+                "invoice_number": nf_data['invoice_number'],
+                "total_amount": nf_data['total_amount']
+            }).execute()
+            inv_id = inv_resp.data[0]['id']
+            
+            inv_batch = []
+            for it in nf_data['items']:
+                inv_batch.append({
+                    "invoice_id": inv_id,
+                    "product_name": it['product_name'][:250],
+                    "quantity": it['quantity'],
+                    "unit_price": it['unit_price'],
+                    "ncm": it['ncm'][:50] if 'ncm' in it else None
+                })
+            for i in range(0, len(inv_batch), 200):
+                supabase.table('invoice_items').insert(inv_batch[i:i+200]).execute()
+            
+            if order_data:
+                await update.message.reply_text("🔍 Pedido Pendente Localizado no Banco de Dados! Acionando ZAR Auditor Neural...")
+                agent = ZarAIAgent()
+                audit_report = agent.audit_invoice_vs_order(order_data, nf_data)
+                
+                supabase.table('purchase_orders').update({'status': 'AUDITED'}).eq('id', p_order_id).execute()
+                # Atualizando invoice indicando se achou divergência caso o relatório contiver asterisco ou X. (Simplificado)
+                
+                for chunk in chunk_message(audit_report):
+                    await update.message.reply_text(chunk, parse_mode="HTML")
+            else:
+                await update.message.reply_text(f"✅ Nota Fiscal Gravada! (Nenhum Pedido Original encontado no sistema para auditar contra a nota {nf_data['invoice_number']}).")
+
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             return
 
         elif doc.file_name.lower().endswith('.pdf'):
             from src.services.ai_agent import ZarAIAgent
+            from datetime import datetime
             
-            await update.message.reply_text("👁️ Ativando a Visão Computacional do ZAR para ler seu PDF...")
+            await update.message.reply_text("👁️ Ativando a Visão Computacional do ZAR para ler seu PDF e extrair JSON...")
             agent = ZarAIAgent()
-            pdf_report = agent.parse_purchase_order_pdf(temp_path)
+            pdf_data = agent.parse_purchase_order_pdf(temp_path)
             
-            # TODO: Salvar no Supabase a Ordem de Compra
-            
-            for chunk in chunk_message(pdf_report):
-                await update.message.reply_text(chunk, parse_mode="HTML")
+            if not pdf_data or "items" not in pdf_data:
+                await update.message.reply_text("❌ Falha crítica: O documento PDF não continha dados legíveis ou a IA rejeitou a formatação.")
+                return
                 
+            supabase = get_supabase_client()
+            def get_sup_id(name):
+                r = supabase.table('suppliers').select('id').ilike('name', f"%{name[:10]}%").execute()
+                if r.data: return r.data[0]['id']
+                ins = supabase.table('suppliers').insert({'name': name}).execute()
+                return ins.data[0]['id']
+                
+            sup_name = pdf_data.get('supplier_name', 'Fábrica Desconhecida')
+            sup_id = get_sup_id(sup_name)
+            
+            po_resp = supabase.table('purchase_orders').insert({
+                'supplier_id': sup_id,
+                'order_date': datetime.now().strftime('%Y-%m-%d'),
+                'status': 'PENDING'
+            }).execute()
+            po_id = po_resp.data[0]['id']
+            
+            po_items = []
+            for it in pdf_data.get('items', []):
+                po_items.append({
+                    "purchase_order_id": po_id,
+                    "product_name": str(it.get('product_name', 'Item'))[:250],
+                    "quantity": float(it.get('quantity', 0)),
+                    "unit_price": float(it.get('unit_price', 0))
+                })
+            for i in range(0, len(po_items), 200):
+                supabase.table('purchase_order_items').insert(po_items[i:i+200]).execute()
+                
+            await update.message.reply_text(
+                f"📋 *PEDIDO GRAVADO COM SUCESSO!*\n"
+                f"🏢 Fábrica: {sup_name}\n"
+                f"📦 Itens Distintos: {len(po_items)}\n"
+                f"💰 Total Declarado: R$ {pdf_data.get('total_amount', 0):,.2f}\n\n"
+                f"O ZAR ficará de guarda aguardando a Nota Fiscal desta fábrica para defender seu capital!"
+            )
+            
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             return
