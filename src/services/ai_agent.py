@@ -172,44 +172,48 @@ class ZarAIAgent:
             logger.error(f"Erro ao extrair JSON do PDF: {e}")
             return None
 
-    def audit_invoice_vs_order(self, order_data: dict, invoice_data: dict) -> str:
+    def audit_invoice_vs_order(self, order_data: dict, invoice_data: dict) -> dict:
         """
-        Inteligência super avançada que compara nota fiscal com pedido e acha fraudes/divergências.
+        Inteligência que compara nota com pedido, acha divergências e devolve DADOS para atualizar o saldo no banco de dados.
         """
         prompt = f"""
-        Você é o ZAR AUDITOR FINANCEIRO. Sua única missão é proteger o dinheiro do seu chefe, Bruno.
-        Você verá os dados de um PEDIDO DE COMPRA original e os dados da NOTA FISCAL FATURADA.
-        
-        Sua missão é realizar o MATCHING (cruzamento) inteligente (pois os nomes podem estar ligeiramente diferentes na NF e no PDF) e encontrar DIVERGÊNCIAS.
+        Você é o ZAR AUDITOR LOGÍSTICO.
+        Sua missão é realizar o MATCHING (cruzamento) inteligente (pois os nomes variam) entre pedido e faturamento.
         
         PEDIDO DE COMPRA ORIGINAL:
         - Fornecedor: {order_data.get('supplier_name')}
-        - Valor Total: R$ {order_data.get('total_amount')}
-        - Itens: {json.dumps(order_data.get('items', []), default=str)}
+        - Itens (Nome e Qtd Pedida): {json.dumps(order_data.get('items', []), default=str)}
         
-        NOTA FISCAL RECEBIDA (FATURADA):
-        - Fornecedor: {invoice_data.get('supplier_name')}
-        - Valor Total: R$ {invoice_data.get('total_amount')}
-        - Itens Faturados: {json.dumps(invoice_data.get('items', []), default=str)}
+        NOTA FISCAL RECEBIDA:
+        - Itens Faturados (Nome e Qtd Entregue agora): {json.dumps(invoice_data.get('items', []), default=str)}
         
-        REGRAS DE AUDITORIA:
-        1. Alerte se a quantidade faturada for diferente (faltou entregar algo?).
-        2. Alerte MUITO FORTE se o 'unit_price' faturado for MAIOR que o do pedido (aumentaram o preço!).
-        3. Fique tranquilo se faltou produto na NF, apenas informe o corte. Mas seja implacável com preço de custo alterado.
+        Sua saída deve ser EXATAMENTE um JSON válido neste formato (sem Markdown):
+        {{
+            "report_text": "Seu relatório executivo para o Telegram em português, indicando Micos de Preço (Aumentos!), Itens faltantes e sucesso. Use Emojis bonitos. Quebre linha com \\n",
+            "matched_items": [
+                {{
+                    "order_item_name": "Nome EXATO como consta no JSON de 'PEDIDO DE COMPRA ORIGINAL' que está sendo dado baixa com esta NF",
+                    "quantity_received_now": 4.0
+                }}
+            ],
+            "is_order_completed": false
+        }}
         
-        Formate seu relatório usando emojis. SE NÃO HOUVER erro (Tudo perfeito), parabenize e diga que a Nota Fiscal bateu 100% centavo por centavo com o PDF do pedido.
-        SE HOUVER DIVERGÊNCIA, destaque em bullet points o Produto, Preço no Pedido, Preço na NF e a Diferença cobrada a mais!
-        [REGRA DE ESTILO]: Nada de enrolação. SEJA DIRETO! Zero Markdown de formatação pesada (sem asteriscos ou hashtag). 
+        Defina is_order_completed como true apenas se todos os itens do pedido original tiverem sido faturados na mesma quantidade ou mais.
         """
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
-                config=types.GenerateContentConfig(temperature=0.1)
+                config=types.GenerateContentConfig(
+                    temperature=0.0,
+                    response_mime_type="application/json"
+                )
             )
-            return response.text
+            return json.loads(response.text)
         except Exception as e:
-            return f"❌ Erro na Auditoria Cruzada ZAR: {str(e)}"
+            logger.error(f"Erro na auditoria JSON: {e}")
+            return None
 
 # agent = ZarAIAgent()
 # report = agent.analyze_inventory_health(dados)

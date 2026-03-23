@@ -82,15 +82,28 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 supabase.table('invoice_items').insert(inv_batch[i:i+200]).execute()
             
             if order_data:
-                await update.message.reply_text("🔍 Pedido Pendente Localizado no Banco de Dados! Acionando ZAR Auditor Neural...")
+                await update.message.reply_text("🔍 Pedido Localizado no Banco de Dados! Acionando ZAR Auditor Neural para bater Itens e Preços...")
                 agent = ZarAIAgent()
-                audit_report = agent.audit_invoice_vs_order(order_data, nf_data)
+                audit_data = agent.audit_invoice_vs_order(order_data, nf_data)
                 
-                supabase.table('purchase_orders').update({'status': 'AUDITED'}).eq('id', p_order_id).execute()
-                # Atualizando invoice indicando se achou divergência caso o relatório contiver asterisco ou X. (Simplificado)
+                if audit_data:
+                    # Atualiza saldos fracionados
+                    for match in audit_data.get('matched_items', []):
+                        o_item = next((i for i in order_data['items'] if i['product_name'] == match.get('order_item_name')), None)
+                        if o_item:
+                            current_received = float(o_item.get('received_quantity') or 0)
+                            new_received = current_received + float(match.get('quantity_received_now', 0))
+                            supabase.table('purchase_order_items').update({'received_quantity': new_received}).eq('id', o_item['id']).execute()
+                            
+                    new_status = 'AUDITED' if audit_data.get('is_order_completed') else 'PARTIAL'
+                    supabase.table('purchase_orders').update({'status': new_status}).eq('id', p_order_id).execute()
+                    
+                    report_text = audit_data.get('report_text', 'Auditoria concluída!')
+                else:
+                    report_text = "❌ Ocorreu um erro com a formatação neural da Auditoria. A NFe foi importada, mas o Pedido não sofreu baixa."
                 
-                for chunk in chunk_message(audit_report):
-                    await update.message.reply_text(chunk, parse_mode="HTML")
+                for chunk in chunk_message(report_text):
+                    await update.message.reply_text(chunk)
             else:
                 await update.message.reply_text(f"✅ Nota Fiscal Gravada! (Nenhum Pedido Original encontado no sistema para auditar contra a nota {nf_data['invoice_number']}).")
 
@@ -275,3 +288,68 @@ async def cmd_micos(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     except Exception as e:
         await update.message.reply_text(f"Erro fatal em micos: {str(e)[:500]}")
+
+async def cmd_pendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        from src.db.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        
+        args = context.args
+        if not args:
+            await update.message.reply_text("⚠️ Por favor, informe a fábrica. Exemplo: /pendencias Altenburg")
+            return
+            
+        brand = " ".join(args)
+        
+        # 1. Ache o fornecedor
+        r = supabase.table('suppliers').select('id, name').ilike('name', f"%{brand[:10]}%").execute()
+        if not r.data:
+            await update.message.reply_text(f"❌ Não encontrei fornecedor contendo '{brand}'.")
+            return
+            
+        sup_id = r.data[0]['id']
+        sup_name = r.data[0]['name']
+        
+        await update.message.reply_text(f"Investigando entregas fracionadas da {sup_name}... 🔎")
+        
+        # 2. Ache ordens PENDING ou PARTIAL
+        o_resp = supabase.table('purchase_orders').select('id, order_date, status').eq('supplier_id', sup_id).in_('status', ['PENDING', 'PARTIAL']).execute()
+        if not o_resp.data:
+            await update.message.reply_text(f"✅ O fornecedor {sup_name} não tem nenhum pedido pendente! Entregas 100% liquidadas.")
+            return
+            
+        # 3. Ache itens dessas ordens
+        order_ids = [o['id'] for o in o_resp.data]
+        items_resp = supabase.table('purchase_order_items').select('*').in_('purchase_order_id', order_ids).execute()
+        
+        # 4. Encontre os faltantes
+        missing_items = []
+        for it in items_resp.data:
+            q = float(it['quantity'])
+            r_q = float(it.get('received_quantity') or 0)
+            if q > r_q:
+                missing_items.append({
+                    "name": it['product_name'],
+                    "missing": q - r_q,
+                    "price": float(it['unit_price'])
+                })
+                
+        if not missing_items:
+            await update.message.reply_text(f"✅ Pedidos encontrados, mas a matemática fechou. Nada pendente para {sup_name}.")
+            return
+            
+        # 5. Formatar reposta
+        total_missing = sum([i['missing'] * i['price'] for i in missing_items])
+        
+        msg = f"📦 *PENDÊNCIAS LOGÍSTICAS: {sup_name}*\n"
+        msg += f"Status: {len(o_resp.data)} Pedido(s) aguardando carga total.\n\n"
+        for i in missing_items:
+            msg += f"• Falta {int(i['missing'])}x {i['name'][:40]} (R$ {i['price']:,.2f})\n"
+            
+        msg += f"\n💰 Valor Total Preso em Trânsito: R$ {total_missing:,.2f}"
+        
+        for chunk in chunk_message(msg):
+            await update.message.reply_text(chunk, parse_mode="Markdown")
+            
+    except Exception as e:
+        await update.message.reply_text(f"Erro fatal em pendencias: {str(e)[:500]}")

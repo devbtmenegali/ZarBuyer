@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS public.purchase_order_items (
     purchase_order_id UUID REFERENCES public.purchase_orders(id) ON DELETE CASCADE,
     product_name VARCHAR(255) NOT NULL,
     quantity NUMERIC(15,2) NOT NULL,
+    received_quantity NUMERIC(15,2) DEFAULT 0, -- Rastreia faturamento parcial
     unit_price NUMERIC(15,2) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
