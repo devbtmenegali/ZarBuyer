@@ -7,12 +7,84 @@ from src.db.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
+# --- HELPERS DE AUTENTICAÇÃO ---
+async def get_user_auth(telegram_id: int):
+    supabase = get_supabase_client()
+    resp = supabase.table('bot_users').select('*').eq('telegram_id', telegram_id).execute()
+    if resp.data:
+        return resp.data[0]
+    return None
+
+def is_admin(user_auth):
+    return user_auth and user_auth.get('role') == 'admin'
+
+def is_supplier(user_auth, requested_brand=""):
+    if not user_auth or user_auth.get('role') != 'supplier':
+        return False
+    # Se uma marca for pedida, deve estar contida na marca do fornecedor
+    if requested_brand:
+        auth_brand = user_auth.get('brand', '').lower()
+        if requested_brand.lower() not in auth_brand and auth_brand not in requested_brand.lower():
+            return False
+    return True
+
+# --- COMANDOS DE REGISTRO ---
+async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if not args:
+        await update.message.reply_text("🔑 Uso correto: /admin [sua_senha_secreta]")
+        return
+        
+    senha_enviada = args[0]
+    senha_real = os.environ.get("ADMIN_PASSWORD", "zar123") # Default password if not in .env
+    
+    if senha_enviada == senha_real:
+        supabase = get_supabase_client()
+        tg_id = update.effective_user.id
+        
+        # Upsert admin
+        user_auth = await get_user_auth(tg_id)
+        if user_auth:
+            supabase.table('bot_users').update({'role': 'admin', 'brand': 'TODAS'}).eq('telegram_id', tg_id).execute()
+        else:
+            supabase.table('bot_users').insert({'telegram_id': tg_id, 'role': 'admin', 'brand': 'TODAS'}).execute()
+            
+        await update.message.reply_text("🔓 Acesso ADMINISTRADOR liberado! Você tem controle total do ZAR Agent.")
+    else:
+        await update.message.reply_text("❌ Senha incorreta. Acesso negado.")
+
+async def cmd_sou_fornecedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if not args:
+        await update.message.reply_text("🏢 Uso correto: /sou_fornecedor [Nome da Sua Marca]\nExemplo: /sou_fornecedor Altenburg")
+        return
+        
+    brand = " ".join(args)
+    tg_id = update.effective_user.id
+    supabase = get_supabase_client()
+    
+    user_auth = await get_user_auth(tg_id)
+    if user_auth:
+        supabase.table('bot_users').update({'role': 'supplier', 'brand': brand}).eq('telegram_id', tg_id).execute()
+    else:
+        supabase.table('bot_users').insert({'telegram_id': tg_id, 'role': 'supplier', 'brand': brand}).execute()
+        
+    await update.message.reply_text(f"🤝 Bem-vindo, Fornecedor {brand}! O ZAR foi configurado para exibir apenas suas análises e pendências.")
+
+# --- COMANDOS PRINCIPAIS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Olá! Sou o Agente ZAR. Envie sua planilha diária de Estoque Geral (.xlsx) aqui no chat para que eu processe."
+        "Olá! Sou o Agente ZAR.\n\n"
+        "Se você é o DONO, faça o login com: /admin [senha]\n"
+        "Se você é FORNECEDOR, digite: /sou_fornecedor [sua_marca]"
     )
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Negado: Apenas Administradores podem fazer upload de XML de Notas Fiscais ou Planilhas.")
+        return
+
     doc = update.message.document
     
     allowed_extensions = ('.xlsx', '.xml', '.pdf')
@@ -243,12 +315,23 @@ def chunk_message(text, size=4000):
     return [text[i:i+size] for i in range(0, len(text), size)]
 
 async def cmd_analisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not auth:
+        await update.message.reply_text("⛔ Faça login para acessar o sistema de análises.")
+        return
+
     try:
         from src.services.inventory_analysis import InventoryDataService
         from src.services.ai_agent import ZarAIAgent
         
         args = context.args
         brandFilter = " ".join(args) if args else None
+        
+        if auth['role'] == 'supplier':
+            # Fornecedor só pode pesquisar a própria marca
+            if not brandFilter or not is_supplier(auth, brandFilter):
+                brandFilter = auth['brand'] # Força a marca dele
+                await update.message.reply_text(f"🔒 Acesso Fornecedor: Redirecionando a análise apenas para '{brandFilter}'.")
         
         await update.message.reply_text("Consultando o banco de dados... 🔎")
         
@@ -271,6 +354,11 @@ async def cmd_analisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Erro fatal em analisar: {str(e)[:500]}")
 
 async def cmd_micos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria pode mapear Dead Stock e Combos.")
+        return
+
     try:
         from src.services.inventory_analysis import InventoryDataService
         from src.services.ai_agent import ZarAIAgent
@@ -290,16 +378,28 @@ async def cmd_micos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Erro fatal em micos: {str(e)[:500]}")
 
 async def cmd_pendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not auth:
+        await update.message.reply_text("⛔ Faça login para consultar pendências.")
+        return
+
     try:
         from src.db.supabase_client import get_supabase_client
         supabase = get_supabase_client()
         
         args = context.args
         if not args:
-            await update.message.reply_text("⚠️ Por favor, informe a fábrica. Exemplo: /pendencias Altenburg")
-            return
+            if auth['role'] == 'supplier':
+                brand = auth['brand']
+            else:
+                await update.message.reply_text("⚠️ Por favor, informe a fábrica. Exemplo: /pendencias Altenburg")
+                return
+        else:
+            brand = " ".join(args)
             
-        brand = " ".join(args)
+        if auth['role'] == 'supplier' and not is_supplier(auth, brand):
+            brand = auth['brand']
+            await update.message.reply_text(f"🔒 Apenas suas pendências da {brand} podem ser acessadas.")
         
         # 1. Ache o fornecedor
         r = supabase.table('suppliers').select('id, name').ilike('name', f"%{brand[:10]}%").execute()
@@ -355,6 +455,11 @@ async def cmd_pendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Erro fatal em pendencias: {str(e)[:500]}")
 
 async def cmd_negociar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Negado: Informações de Preços e Margens de Lucro são restritas à diretoria.")
+        return
+
     try:
         from src.services.ai_agent import ZarAIAgent
         
@@ -390,6 +495,11 @@ async def cmd_negociar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Erro fatal em negociar: {str(e)[:500]}")
 
 async def cmd_comprar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Alertas de quebra de estoque e compras são ferramentas da diretoria.")
+        return
+
     try:
         from src.services.inventory_analysis import InventoryDataService
         from src.services.ai_agent import ZarAIAgent
@@ -418,6 +528,11 @@ async def cmd_comprar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Erro fatal em alertar compras: {str(e)[:500]}")
 
 async def cmd_comparar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Restrito: O comparador de preços e auto-canibalização pesquisa concorrentes (recurso da diretoria).")
+        return
+
     try:
         from src.services.inventory_analysis import InventoryDataService
         from src.services.ai_agent import ZarAIAgent
@@ -449,6 +564,11 @@ async def cmd_comparar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Erro fatal em comparar: {str(e)[:500]}")
 
 async def cmd_cotar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Apenas o Gestor de Compras pode gerar Pitch de Negociação Automático.")
+        return
+
     try:
         from src.services.inventory_analysis import InventoryDataService
         from src.services.ai_agent import ZarAIAgent

@@ -48,7 +48,7 @@ if __name__ == '__main__':
         
     application = ApplicationBuilder().token(TOKEN).build()
     
-    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos, cmd_pendencias, cmd_negociar, cmd_comprar, cmd_comparar, cmd_cotar
+    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos, cmd_pendencias, cmd_negociar, cmd_comprar, cmd_comparar, cmd_cotar, cmd_admin, cmd_sou_fornecedor
     from telegram.ext import MessageHandler, filters
     
     start_handler = CommandHandler('start', start_command)
@@ -59,9 +59,13 @@ if __name__ == '__main__':
     comprar_handler = CommandHandler('comprar', cmd_comprar)
     comparar_handler = CommandHandler('comparar', cmd_comparar)
     cotar_handler = CommandHandler('cotar', cmd_cotar)
+    admin_handler = CommandHandler('admin', cmd_admin)
+    sou_fornecedor_handler = CommandHandler('sou_fornecedor', cmd_sou_fornecedor)
     doc_handler = MessageHandler(filters.Document.ALL, handle_document)
     
     application.add_handler(start_handler)
+    application.add_handler(admin_handler)
+    application.add_handler(sou_fornecedor_handler)
     application.add_handler(analisar_handler)
     application.add_handler(micos_handler)
     application.add_handler(pendencias_handler)
