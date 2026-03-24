@@ -405,3 +405,52 @@ Regras:
     def _get_seasonality_context(self) -> str:
         from datetime import datetime
         return f"\n[CONTEXTO TEMPORAL/SAZONALIDADE] Hoje é {datetime.now().strftime('%d/%m/%Y')}. Como IA de inteligência de compras, analise a proximidade de datas comemorativas cruciais do Varejo (Dia das Mães, Dia dos Namorados, Inverno, Black Friday, Natal) e avise caso os números do estoque atual apresentem riscos pro futuro próximo."
+
+    def extract_user_intent(self, text: str, user_role: str) -> dict:
+        import json
+        prompt = f"""
+Você é o roteador neurolinguístico (NLP Router) do ZAR Agent.
+Analise a seguinte mensagem enviada por um '{user_role}' (admin ou supplier) pelo WhatsApp/Telegram da empresa e extraia de forma pragmática a INTENÇÃO e a MARCA/NOME FÁBRICA.
+
+Mensagem Escrita Pelo Usuário: "{text}"
+
+As intenções base mapeiam para as seguintes funções internas do nosso ERP:
+- "analisar": Análise geral de portfólio da marca (Ranking 80/20, Estoque, etc).
+- "micos": Produtos parados, sobras de estoque (Dead Stock / Clearence).
+- "pendencias": Pedidos de compra que atrasaram ou não foram faturados.
+- "negociar": Sugestão ou alerta sobre necessidades de compras / ruptura.
+- "comparar": Compara produtos similares (Ex: Travesseiros, Edredons) entre si.
+- "comprar": Emissão oficial de pedidos novos para as fábricas.
+- "cotar": Anota e precifica cotações rápidas passadas por vendedores de fora.
+- "caixa": Avalia os boletos e próximos desembolsos do caixa (Faturas financeiras).
+- "giro": Quando o usuário quer saber dias de cobertura, velocidade de saída, ritmo de vendas.
+- "reprecificar": Alerta de inflação nas compras ou cálculo de alteração nos preços de venda.
+- "chargeback": Devolver mercadoria com avaria, faltantes ou emitir termo de desconto/multa a fábrica.
+- "docas": Transporte logístico, agendamento de pátio, carreta, transportadora.
+
+Se a frase é apenas falação normal de chat sem intenção comercial: "chat_normal"
+
+Responda ÚNICA e EXCLUSIVAMENTE com um objeto JSON válido.
+Formato:
+{{
+  "intent": "um dos 12 modulos descritos acima, ou chat_normal",
+  "brand": "O nome da marca citada (se citado). Ex: Karsten, Appel, Altenburg",
+  "args": "Se for chargeback, ponha o número da NF se vir. Se for doca, ponha nome da transportadora. Senao, deixe vazio"
+}}
+"""
+        from google import genai
+        from google.genai import types
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.0)
+            )
+            raw = response.text.strip()
+            if raw.startswith("```json"):
+                raw = raw[7:-3]
+            elif raw.startswith("```"):
+                raw = raw[3:-3]
+            return json.loads(raw.strip())
+        except Exception as e:
+            return {"intent": "chat_normal", "brand": None, "args": None}

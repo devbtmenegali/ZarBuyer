@@ -833,3 +833,62 @@ async def cmd_docas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ Slot de agendamento de Descarregamento confirmado em sistema para: {transp}")
     except Exception as e:
         logger.error(f"Erro em docas: {e}")
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    
+    if text.startswith("/"):
+        return
+        
+    auth = await get_user_auth(update.effective_user.id)
+    if not auth:
+        await update.message.reply_text("⛔ Faça login antes de conversar comigo.\nEx: /sou_fornecedor [Sua Marca] ou /admin [Senha]")
+        return
+        
+    await update.message.reply_chat_action(action="typing")
+    
+    from src.services.ai_agent import ZarAIAgent
+    agent = ZarAIAgent()
+    
+    try:
+        nlp = agent.extract_user_intent(text, auth.get('role', 'unknown'))
+        intent = nlp.get('intent', 'chat_normal')
+        brand = nlp.get('brand')
+        args_extra = nlp.get('args')
+        
+        command_map = {
+            "analisar": cmd_analisar,
+            "micos": cmd_micos,
+            "pendencias": cmd_pendencias,
+            "negociar": cmd_negociar,
+            "comparar": cmd_comparar,
+            "comprar": cmd_comprar,
+            "cotar": cmd_cotar,
+            "caixa": cmd_caixa,
+            "giro": cmd_giro,
+            "reprecificar": cmd_reprecificar,
+            "chargeback": cmd_chargeback,
+            "docas": cmd_docas
+        }
+        
+        if intent in command_map.keys():
+            fake_args = []
+            if brand and brand.strip():
+                # Se for nome composto ex Karsten Casa nós preservaremos passando em array
+                fake_args.extend(brand.split())
+            elif args_extra and args_extra.strip():
+                fake_args.extend(str(args_extra).split())
+                
+            context.args = fake_args
+            
+            await update.message.reply_text(f"🧠 *ZAR NLP:* Identifiquei seu desejo de `/{intent}`. Ativando engrenagens operacionais...", parse_mode='Markdown')
+            
+            target_cmd = command_map[intent]
+            # Mapeia e executa a função velha enganando com os args dinamicos da IA
+            await target_cmd(update, context)
+        else:
+            await update.message.reply_text("🤖 Desculpe, fui desenhado para auditorias de estoque e cálculos de varejo. Pode ser mais direto na sua solicitação comercial?")
+            
+    except Exception as e:
+        logger.error(f"Erro Cérebro NLP: {e}")
+        await update.message.reply_text("Tive um curto-circuito na minha rede neural tentando ler a intenção da sua mensagem.")

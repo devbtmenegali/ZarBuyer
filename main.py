@@ -48,7 +48,7 @@ if __name__ == '__main__':
         
     application = ApplicationBuilder().token(TOKEN).build()
     
-    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos, cmd_pendencias, cmd_negociar, cmd_comprar, cmd_comparar, cmd_cotar, cmd_admin, cmd_sou_fornecedor, cmd_caixa, cmd_giro, cmd_reprecificar, cmd_chargeback, cmd_docas
+    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos, cmd_pendencias, cmd_negociar, cmd_comprar, cmd_comparar, cmd_cotar, cmd_admin, cmd_sou_fornecedor, cmd_caixa, cmd_giro, cmd_reprecificar, cmd_chargeback, cmd_docas, handle_text
     from telegram.ext import MessageHandler, filters
     
     start_handler = CommandHandler('start', start_command)
@@ -67,6 +67,7 @@ if __name__ == '__main__':
     chargeback_handler = CommandHandler('chargeback', cmd_chargeback)
     docas_handler = CommandHandler('docas', cmd_docas)
     doc_handler = MessageHandler(filters.Document.ALL, handle_document)
+    text_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     
     application.add_handler(start_handler)
     application.add_handler(admin_handler)
@@ -84,6 +85,7 @@ if __name__ == '__main__':
     application.add_handler(comparar_handler)
     application.add_handler(cotar_handler)
     application.add_handler(doc_handler)
+    application.add_handler(text_handler)
     
     logger.info("Bot ZAR iniciado com Inteligência Artificial!")
     application.run_polling()
