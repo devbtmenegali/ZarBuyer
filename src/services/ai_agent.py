@@ -215,5 +215,76 @@ class ZarAIAgent:
             logger.error(f"Erro na auditoria JSON: {e}")
             return None
 
-# agent = ZarAIAgent()
-# report = agent.analyze_inventory_health(dados)
+    def analyze_purchase_recommendations(self, custom_data: list, brand: str) -> str:
+        brand_name = (brand or "Geral")
+        prompt = f"""
+        Você é o ZAR, sugerindo um Pedido de Compra Urgente.
+        Recebemos produtos da marca/categoria {brand_name} com ESTOQUE BAIXO ou ZERADO.
+        
+        Sua tarefa:
+        1. Liste os itens críticos a serem repostos.
+        2. Dê uma sugestão de quantidade a comprar (pense em pelo menos 10 ou 20 por item dependendo do ticket).
+        3. Formate com clareza usando emojis de alerta 🚨.
+        
+        Seja super conciso. Zero papo furado. Não avise que é uma simulação.
+
+        DADOS:
+        {json.dumps(custom_data[:100], default=str)}
+        """
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.2)
+            )
+            return response.text
+        except Exception as e:
+            return f"❌ Erro ZAR ao prever compras: {str(e)}"
+
+    def analyze_product_comparison(self, custom_data: list, keyword: str) -> str:
+        prompt = f"""
+        Você é o ZAR. Analise os preços e margens de produtos similares do tipo '{keyword}'.
+        
+        Sua tarefa:
+        1. Identifique discrepâncias de preços (produtos similares com preços muito diferentes).
+        2. Destaque se há algum produto "canibalizando" o outro (ex: um produto melhor custando o mesmo que um inferior, ou margens espremidas).
+        3. Dê uma sugestão de reajuste de preço (Reprecificação Dinâmica) se aplicável.
+        
+        Seja super conciso. Use bullet points e emojis. Recomende a ação a ser tomada.
+        
+        DADOS DE COMPARAÇÃO:
+        {json.dumps(custom_data, default=str)}
+        """
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.2)
+            )
+            return response.text
+        except Exception as e:
+            return f"❌ Erro ZAR ao comparar produtos: {str(e)}"
+
+    def generate_supplier_pitch(self, custom_data: list, brand: str) -> str:
+        prompt = f"""
+        Você é o ZAR, diretor logístico e de compras.
+        Escreva uma mensagem comercial persuasiva (um "Pitch") direcionada ao representante da marca '{brand}'.
+        O objetivo é usar nosso ALTO GIRO dos produtos listados abaixo para negociar um lote maior com desconto expressivo.
+        
+        Sua tarefa:
+        1. Crie uma mensagem pronta para ser enviada por WhatsApp (formal mas direta, com emojis moderados).
+        2. Destaque o sucesso de giro dos itens listados (que estão com pouco estoque).
+        3. Peça uma proposta de preço agressiva para reposição de lote fechado.
+        
+        DADOS DE OPORTUNIDADE:
+        {json.dumps(custom_data, default=str)}
+        """
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.4)
+            )
+            return response.text
+        except Exception as e:
+            return f"❌ Erro ZAR ao gerar pitch: {str(e)}"

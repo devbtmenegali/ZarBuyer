@@ -353,3 +353,128 @@ async def cmd_pendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     except Exception as e:
         await update.message.reply_text(f"Erro fatal em pendencias: {str(e)[:500]}")
+
+async def cmd_negociar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        from src.services.ai_agent import ZarAIAgent
+        
+        args = context.args
+        if len(args) < 3:
+            await update.message.reply_text(
+                "⚠️ Uso correto: /negociar [custo_proposto] [preço_venda_atual] [margem_ideal_%]\n"
+                "Exemplo: /negociar 45.50 89.90 40"
+            )
+            return
+            
+        try:
+            proposed_cost = float(args[0].replace(',', '.'))
+            selling_price = float(args[1].replace(',', '.'))
+            current_margin = float(args[2].replace(',', '.'))
+        except ValueError:
+            await update.message.reply_text("❌ Valores numéricos inválidos. Use apenas números e ponto ou vírgula.")
+            return
+
+        await update.message.reply_text("🤖 ZAR analisando a viabilidade desta negociação ao vivo...")
+        
+        agent = ZarAIAgent()
+        report = agent.analyze_negotiation(
+            current_margin=current_margin,
+            proposed_cost=proposed_cost,
+            selling_price=selling_price
+        )
+        
+        for chunk in chunk_message(report):
+            await update.message.reply_text(chunk, parse_mode="HTML")
+            
+    except Exception as e:
+        await update.message.reply_text(f"Erro fatal em negociar: {str(e)[:500]}")
+
+async def cmd_comprar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        from src.services.inventory_analysis import InventoryDataService
+        from src.services.ai_agent import ZarAIAgent
+        
+        args = context.args
+        brandFilter = " ".join(args) if args else "Geral"
+        
+        await update.message.reply_text(f"Mapeando produtos {brandFilter} em estado crítico de estoque... 📉")
+        
+        db_service = InventoryDataService()
+        data = db_service.get_low_stock_items(brandFilter if brandFilter != "Geral" else None)
+        
+        if not data:
+            await update.message.reply_text(f"✅ O estoque de '{brandFilter}' está saudável. Nenhum item com giro alto e estoque baixo encontrado.")
+            return
+            
+        await update.message.reply_text(f"🚨 Encontrei {len(data)} itens críticos! ZAR elaborando sugestão de pedido de compras...")
+        
+        agent = ZarAIAgent()
+        report = agent.analyze_purchase_recommendations(data, brandFilter)
+        
+        for chunk in chunk_message(report):
+            await update.message.reply_text(chunk, parse_mode="HTML")
+            
+    except Exception as e:
+        await update.message.reply_text(f"Erro fatal em alertar compras: {str(e)[:500]}")
+
+async def cmd_comparar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        from src.services.inventory_analysis import InventoryDataService
+        from src.services.ai_agent import ZarAIAgent
+        
+        args = context.args
+        if not args:
+            await update.message.reply_text("⚠️ Informe o tipo de produto para comparar. Exemplo: /comparar travesseiro")
+            return
+            
+        keyword = " ".join(args)
+        await update.message.reply_text(f"Buscando produtos similares a '{keyword}' no estoque... 🔍")
+        
+        db_service = InventoryDataService()
+        data = db_service.compare_similar_products(keyword)
+        
+        if not data or len(data) < 2:
+            await update.message.reply_text(f"❌ Não encontrei produtos suficientes contendo '{keyword}' para uma comparação útil.")
+            return
+            
+        await update.message.reply_text(f"⚖️ Encontrei {len(data)} itens similares. Acionando ZAR para análise de concorrência e preços...")
+        
+        agent = ZarAIAgent()
+        report = agent.analyze_product_comparison(data, keyword)
+        
+        for chunk in chunk_message(report):
+            await update.message.reply_text(chunk, parse_mode="HTML")
+            
+    except Exception as e:
+        await update.message.reply_text(f"Erro fatal em comparar: {str(e)[:500]}")
+
+async def cmd_cotar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        from src.services.inventory_analysis import InventoryDataService
+        from src.services.ai_agent import ZarAIAgent
+        
+        args = context.args
+        if not args:
+            await update.message.reply_text("⚠️ Informe a marca/fornecedor para gerar o pitch comercial. Exemplo: /cotar Altenburg")
+            return
+            
+        brand = " ".join(args)
+        await update.message.reply_text(f"Mapeando itens de alto giro de '{brand}'... 📊")
+        
+        db_service = InventoryDataService()
+        data = db_service.get_supplier_opportunities(brand)
+        
+        if not data:
+            await update.message.reply_text(f"❌ Não encontrei produtos de alto giro com estoque baixo da '{brand}'. O estoque pode estar cheio.")
+            return
+            
+        await update.message.reply_text(f"✅ Encontrei {len(data)} itens com giro rápido. ZAR escrevendo a mensagem de negociação em lote...")
+        
+        agent = ZarAIAgent()
+        report = agent.generate_supplier_pitch(data, brand)
+        
+        for chunk in chunk_message(report):
+            await update.message.reply_text(chunk, parse_mode="HTML")
+            
+    except Exception as e:
+        await update.message.reply_text(f"Erro fatal em cotar: {str(e)[:500]}")
