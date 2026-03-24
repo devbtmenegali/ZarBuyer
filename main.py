@@ -48,7 +48,7 @@ if __name__ == '__main__':
         
     application = ApplicationBuilder().token(TOKEN).build()
     
-    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos, cmd_pendencias, cmd_negociar, cmd_comprar, cmd_comparar, cmd_cotar, cmd_admin, cmd_sou_fornecedor
+    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos, cmd_pendencias, cmd_negociar, cmd_comprar, cmd_comparar, cmd_cotar, cmd_admin, cmd_sou_fornecedor, cmd_caixa, cmd_giro, cmd_reprecificar, cmd_chargeback, cmd_docas
     from telegram.ext import MessageHandler, filters
     
     start_handler = CommandHandler('start', start_command)
@@ -61,11 +61,21 @@ if __name__ == '__main__':
     cotar_handler = CommandHandler('cotar', cmd_cotar)
     admin_handler = CommandHandler('admin', cmd_admin)
     sou_fornecedor_handler = CommandHandler('sou_fornecedor', cmd_sou_fornecedor)
+    caixa_handler = CommandHandler('caixa', cmd_caixa)
+    giro_handler = CommandHandler('giro', cmd_giro)
+    reprecificar_handler = CommandHandler('reprecificar', cmd_reprecificar)
+    chargeback_handler = CommandHandler('chargeback', cmd_chargeback)
+    docas_handler = CommandHandler('docas', cmd_docas)
     doc_handler = MessageHandler(filters.Document.ALL, handle_document)
     
     application.add_handler(start_handler)
     application.add_handler(admin_handler)
     application.add_handler(sou_fornecedor_handler)
+    application.add_handler(caixa_handler)
+    application.add_handler(giro_handler)
+    application.add_handler(reprecificar_handler)
+    application.add_handler(chargeback_handler)
+    application.add_handler(docas_handler)
     application.add_handler(analisar_handler)
     application.add_handler(micos_handler)
     application.add_handler(pendencias_handler)

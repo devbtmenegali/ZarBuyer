@@ -288,3 +288,120 @@ class ZarAIAgent:
             return response.text
         except Exception as e:
             return f"❌ Erro ZAR ao gerar pitch: {str(e)}"
+
+    def analyze_cash_flow(self, payables: list) -> str:
+        import json
+        prompt = f"""
+Você atua como o Diretor Financeiro (CFO) do ZAR Agent.
+As notas fiscais enviadas recentemente geraram as seguintes parcelas a pagar:
+{json.dumps(payables, indent=2, ensure_ascii=False)}
+
+Gere um sumário executivo focado no Fluxo de Caixa:
+1. Quanto teremos que desembolsar em breve? Destaque as maiores concentrações de valores por Data de Vencimento.
+2. Quais Fornecedores têm a maior fatia à pagar?
+3. Otimização Financeira: Em um curto Insight, informe se caberia renegociar os próximos pedidos focando em prazo alongado de pagamento (para aliviar os picos de desembolso) ou pagamento antecipado (se o caixa estiver folgado em certas semanas).
+
+Regras de Estilo:
+Use bullets diretos, não use Markdown exagerado e use um tom cirúrgico.
+"""
+        from google import genai
+        from google.genai import types
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.3)
+            )
+            return response.text
+        except Exception as e:
+            return f"❌ Erro na análise de caixa: {str(e)}"
+
+    def analyze_turnover(self, data: list, brand: str) -> str:
+        import json
+        prompt = f"""
+Você é o ZAR Agent, Diretor de Supply Chain. {self._get_seasonality_context()}
+
+Analise este relatório de GIRO DE ESTOQUE (Sales Velocity) da fábrica '{brand}'.
+Os produtos estão ordenados por "Dias_Cobertura" (os primeiros vão zerar antes).
+Dados Reais:
+{json.dumps(data, indent=2, ensure_ascii=False)}
+
+Gere um diagnóstico em bullets destacando:
+1. Risco Iminente: Quais produtos vão acabar nos próximos 15 dias (Risco de ruptura)?
+2. Curvas A viciadas: Quais produtos vendem rápido (Venda_Dia alta) e precisam de mais volume por pedido de reposição?
+3. Tranqueiras (Dead Stock): Destaque (se houver) algum produto com giro nulo (999 dias de cobertura) para o Dono olhar.
+
+Não force formatação excessiva (use emojis controlados) e dê um tom autoritário e logístico.
+"""
+        from google import genai
+        from google.genai import types
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.4)
+            )
+            return response.text
+        except Exception as e:
+            return f"❌ falha ZAR no giro: {str(e)}"
+
+    def analyze_repricing(self, data: list, brand: str) -> str:
+        import json
+        prompt = f"""
+Você atua como o Diretor de Pricing (Pricing Manager) do ZAR Agent.
+Analise a INFLAÇÃO DE CUSTO (Divergência NFe vs Estoque) da fábrica '{brand}'.
+Os itens abaixo chegaram na última Nota Fiscal mais CAROS do que nosso Custo Base Estocado.
+Dados Reais de Inflação:
+{json.dumps(data, indent=2, ensure_ascii=False)}
+
+Gere um diagnóstico focado em Remarcação de Preços (Reprecificação):
+1. Destaque os itens com o maior choque de inflação no custo.
+2. Alerte a equipe sobre o "Novo_Preco_Sugerido" para ser aplicado imediatamente nas etiquetas da loja, de modo a não perdermos o markup (a margem bruta) sobre o custo de reposição atualizado.
+3. Decisão Drástica: Informe se o custo inflou tanto (ex: acima de 15%) que talvez seria melhor nós pararmos de comprar esse SKU ao invés de aumentar tanto o preço final.
+
+Regras de Estilo:
+Use bullets diretos, emojis controlados 📉💰 e seja taxativo.
+"""
+        from google import genai
+        from google.genai import types
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.3)
+            )
+            return response.text
+        except Exception as e:
+            return f"❌ Erro ZAR em pricing: {str(e)}"
+
+    def generate_chargeback(self, invoice_num: str, divergences: str) -> str:
+        from datetime import datetime
+        hj = datetime.now().strftime("%d/%m/%Y")
+        prompt = f"""
+Você é o Assistente Jurídico/Logístico (ZAR Chargeback) de uma grande empresa de Varejo.
+Recebemos hoje ({hj}) a Nota Fiscal de número {invoice_num}, mas após nossa auditoria de recebimento cruzando com o XML, detectamos graves falhas/faltas de envio comparado ao nosso Pedido Original.
+
+Faltas / Divergências Encontradas:
+{divergences}
+
+Escreva uma "CARTA DE COBRANÇA E PROTESTO DE FATURA" formal, contundente, pronta para o dono da loja dar CTRL+C e mandar no WhatsApp ou Email do representante da fábrica.
+Regras:
+1. Exija abatimento imediato no valor do respectivo boleto/duplicata da nota.
+2. Formalize que a mercadoria chegou avariada ou faltando.
+3. Seja incisivo, use tom jurídico/comercial, e gere os campos em branco (como "[Nome do Fornecedor]") para o dono preencher.
+"""
+        from google import genai
+        from google.genai import types
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.2)
+            )
+            return response.text
+        except Exception as e:
+            return f"❌ Falha ao emitir chargeback: {str(e)}"
+            
+    def _get_seasonality_context(self) -> str:
+        from datetime import datetime
+        return f"\n[CONTEXTO TEMPORAL/SAZONALIDADE] Hoje é {datetime.now().strftime('%d/%m/%Y')}. Como IA de inteligência de compras, analise a proximidade de datas comemorativas cruciais do Varejo (Dia das Mães, Dia dos Namorados, Inverno, Black Friday, Natal) e avise caso os números do estoque atual apresentem riscos pro futuro próximo."

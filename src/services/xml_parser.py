@@ -58,11 +58,28 @@ class NfeParser:
                         "unit_price": unit_price
                     })
 
+        # Lendo as faturas (Contas a Pagar)
+            installments = []
+            cobr = infNFe.find('nfe:cobr', ns)
+            if cobr is not None:
+                for dup in cobr.findall('nfe:dup', ns):
+                    nDup = dup.find('nfe:nDup', ns)
+                    dVenc = dup.find('nfe:dVenc', ns)
+                    vDup = dup.find('nfe:vDup', ns)
+                    
+                    if dVenc is not None and dVenc.text:
+                        installments.append({
+                            "installment_number": nDup.text if nDup is not None else "001",
+                            "due_date": dVenc.text,
+                            "amount": float(vDup.text) if vDup is not None else 0.0
+                        })
+
             return {
                 "supplier_name": emit_name,
                 "invoice_number": nNF,
                 "total_amount": vNF,
-                "items": items
+                "items": items,
+                "installments": installments
             }
             
         except Exception as e:

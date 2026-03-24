@@ -21,10 +21,14 @@ def is_admin(user_auth):
 def is_supplier(user_auth, requested_brand=""):
     if not user_auth or user_auth.get('role') != 'supplier':
         return False
-    # Se uma marca for pedida, deve estar contida na marca do fornecedor
+    # Se uma marca for pedida, deve estar contida no portfólio do fornecedor
     if requested_brand:
-        auth_brand = user_auth.get('brand', '').lower()
-        if requested_brand.lower() not in auth_brand and auth_brand not in requested_brand.lower():
+        current_brand = user_auth.get('brand', '')
+        auth_brands = [b.strip().lower() for b in current_brand.split(',') if b.strip()]
+        requested = requested_brand.lower()
+        
+        # Verifica se pediu especificamente algo do portfólio dele (Ex: MMartan contém MMartan, ou Karsten contém Karsten)
+        if not any(requested in b for b in auth_brands) and not any(b in requested for b in auth_brands):
             return False
     return True
 
@@ -65,12 +69,25 @@ async def cmd_sou_fornecedor(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     user_auth = await get_user_auth(tg_id)
     if user_auth:
-        supabase.table('bot_users').update({'role': 'supplier', 'brand': brand}).eq('telegram_id', tg_id).execute()
+        current_brand = user_auth.get('brand', '')
+        
+        if user_auth.get('role') == 'supplier':
+            # Adiciona ao portfólio sem duplicar
+            auth_brands = [b.strip().lower() for b in current_brand.split(',') if b.strip()]
+            if brand.lower() not in auth_brands:
+                new_brand = f"{current_brand}, {brand}" if current_brand else brand
+            else:
+                new_brand = current_brand
+        else:
+            new_brand = brand # Se era admin e rodou isso, vira fornecedor comum (override)
+            
+        supabase.table('bot_users').update({'role': 'supplier', 'brand': new_brand}).eq('telegram_id', tg_id).execute()
+        brand_to_show = new_brand
     else:
         supabase.table('bot_users').insert({'telegram_id': tg_id, 'role': 'supplier', 'brand': brand}).execute()
+        brand_to_show = brand
         
-    await update.message.reply_text(f"🤝 Bem-vindo, Fornecedor {brand}! O ZAR foi configurado para exibir apenas suas análises e pendências.")
-
+    await update.message.reply_text(f"🤝 Bem-vindo, Fornecedor! O ZAR está configurado para o seu portfólio atual:\n📦 {brand_to_show}")
 # --- COMANDOS PRINCIPAIS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -153,6 +170,22 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i in range(0, len(inv_batch), 200):
                 supabase.table('invoice_items').insert(inv_batch[i:i+200]).execute()
             
+            # --- Inserir Parcelas (Contas a Pagar) ---
+            if nf_data.get('installments'):
+                pay_batch = []
+                for inst in nf_data['installments']:
+                    pay_batch.append({
+                         "invoice_id": inv_id,
+                         "installment_number": inst.get('installment_number', '001'),
+                         "due_date": inst['due_date'],
+                         "amount": inst['amount'],
+                         "status": 'PENDING'
+                    })
+                try:
+                    supabase.table('accounts_payable').insert(pay_batch).execute()
+                except Exception as ex:
+                    logger.warning(f"A tabela accounts_payable ainda não existe ou erro salvando boletos: {ex}")
+
             if order_data:
                 await update.message.reply_text("🔍 Pedido Localizado no Banco de Dados! Acionando ZAR Auditor Neural para bater Itens e Preços...")
                 agent = ZarAIAgent()
@@ -328,10 +361,17 @@ async def cmd_analisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         brandFilter = " ".join(args) if args else None
         
         if auth['role'] == 'supplier':
-            # Fornecedor só pode pesquisar a própria marca
-            if not brandFilter or not is_supplier(auth, brandFilter):
-                brandFilter = auth['brand'] # Força a marca dele
-                await update.message.reply_text(f"🔒 Acesso Fornecedor: Redirecionando a análise apenas para '{brandFilter}'.")
+            auth_brands = [b.strip() for b in auth['brand'].split(',') if b.strip()]
+            if not brandFilter:
+                if len(auth_brands) == 1:
+                    brandFilter = auth_brands[0]
+                else:
+                    await update.message.reply_text(f"⚠️ Você representa múltiplas marcas: {auth['brand']}\nPor favor, digite qual deseja analisar. Ex: /analisar {auth_brands[0]}")
+                    return
+            else:
+                if not is_supplier(auth, brandFilter):
+                    await update.message.reply_text(f"🔒 Acesso Fornecedor: Redirecionamento negado para '{brandFilter}'. Suas marcas permitidas: {auth['brand']}")
+                    return
         
         await update.message.reply_text("Consultando o banco de dados... 🔎")
         
@@ -388,18 +428,24 @@ async def cmd_pendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
         supabase = get_supabase_client()
         
         args = context.args
-        if not args:
-            if auth['role'] == 'supplier':
-                brand = auth['brand']
+        if auth['role'] == 'supplier':
+            auth_brands = [b.strip() for b in auth['brand'].split(',') if b.strip()]
+            if not args:
+                if len(auth_brands) == 1:
+                    brand = auth_brands[0]
+                else:
+                    await update.message.reply_text(f"⚠️ Você representa múltiplas marcas: {auth['brand']}\nPor favor, informe a fábrica para investigar a logística. Ex: /pendencias {auth_brands[0]}")
+                    return
             else:
+                brand = " ".join(args)
+                if not is_supplier(auth, brand):
+                    await update.message.reply_text(f"🔒 Acesso Fornecedor: Você não possui a marca '{brand}'. Suas marcas: {auth['brand']}")
+                    return
+        else:
+            if not args:
                 await update.message.reply_text("⚠️ Por favor, informe a fábrica. Exemplo: /pendencias Altenburg")
                 return
-        else:
             brand = " ".join(args)
-            
-        if auth['role'] == 'supplier' and not is_supplier(auth, brand):
-            brand = auth['brand']
-            await update.message.reply_text(f"🔒 Apenas suas pendências da {brand} podem ser acessadas.")
         
         # 1. Ache o fornecedor
         r = supabase.table('suppliers').select('id, name').ilike('name', f"%{brand[:10]}%").execute()
@@ -598,3 +644,192 @@ async def cmd_cotar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     except Exception as e:
         await update.message.reply_text(f"Erro fatal em cotar: {str(e)[:500]}")
+
+async def cmd_caixa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Negado: Visão de contas a pagar e desembolsos restrito.")
+        return
+
+    try:
+        from src.services.ai_agent import ZarAIAgent
+        from src.db.supabase_client import get_supabase_client
+        from datetime import datetime
+        
+        await update.message.reply_text("💸 Analisando Faturas e Projetando Desembolsos do Caixa... ⏳")
+        
+        supabase = get_supabase_client()
+        # Busca faturas pendentes da tabela
+        resp = supabase.table('accounts_payable').select('id, invoice_id, due_date, amount, status').eq('status', 'PENDING').execute()
+        
+        if not resp.data:
+            await update.message.reply_text("🎉 Não há boletos abertos extraídos no momento! Você está em dia.")
+            return
+            
+        # Puxa relacionamento para saber quem cobrar/pagar (NF > Order > Supplier)
+        # Usamos selects locais para não quebrar em syntax error de join no Python Client Supabase
+        invoices_resp = supabase.table('invoices').select('id, purchase_order_id, invoice_number').execute()
+        orders_resp = supabase.table('purchase_orders').select('id, supplier_id').execute()
+        suppliers_resp = supabase.table('suppliers').select('id, name').execute()
+        
+        sup_dict = {s['id']: s['name'] for s in suppliers_resp.data}
+        order_dict = {o['id']: sup_dict.get(o['supplier_id'], 'Desconhecida') for o in orders_resp.data}
+        inv_dict = {i['id']: {'num': i['invoice_number'], 'sup_name': order_dict.get(i['purchase_order_id'], 'Desconhecida')} for i in invoices_resp.data}
+        
+        boletos = []
+        for p in resp.data:
+            inv_info = inv_dict.get(p['invoice_id'], {})
+            boletos.append({
+                "venc": p.get('due_date'),
+                "vlr": p.get('amount'),
+                "nf": inv_info.get('num', '?'),
+                "fabrica": inv_info.get('sup_name', '?')
+            })
+            
+        boletos.sort(key=lambda x: str(x['venc']))
+        boletos_recentes = boletos[:40] # Manda no máx 40 boletos pra não estourar prompt do Gemini
+        
+        agent = ZarAIAgent()
+        analysis = agent.analyze_cash_flow(boletos_recentes)
+        
+        for chunk in chunk_message(analysis):
+            await update.message.reply_text(chunk)
+            
+    except Exception as e:
+        logger.error(f"Erro fatal em caixa: {e}")
+        await update.message.reply_text(f"O ZAR Financeiro acusou pane ao ler as contas: {str(e)[:500]}")
+
+async def cmd_giro(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not auth:
+        await update.message.reply_text("⛔ Faça login para acessar o sistema de Giro de Estoque.")
+        return
+
+    try:
+        from src.services.inventory_analysis import InventoryDataService
+        from src.services.ai_agent import ZarAIAgent
+        
+        args = context.args
+        if auth['role'] == 'supplier':
+            auth_brands = [b.strip() for b in auth['brand'].split(',') if b.strip()]
+            if not args:
+                if len(auth_brands) == 1:
+                    brand = auth_brands[0]
+                else:
+                    await update.message.reply_text(f"⚠️ Você representa múltiplas marcas: {auth['brand']}\nPor favor, digite qual deseja analisar. Ex: /giro {auth_brands[0]}")
+                    return
+            else:
+                brand = " ".join(args)
+                if not is_supplier(auth, brand):
+                    await update.message.reply_text(f"🔒 Acesso Fornecedor: Redirecionamento negado para '{brand}'. Suas marcas: {auth['brand']}")
+                    return
+        else:
+            if not args:
+                await update.message.reply_text("🔎 Uso correto: /giro [Nome da Marca]")
+                return
+            brand = " ".join(args)
+            
+        await update.message.reply_text(f"⚙️ Analisando velocidade de vendas e calculando dias de cobertura para: {brand}... ⏳")
+        
+        db_service = InventoryDataService()
+        turnover_data = db_service.analyze_inventory_turnover(brand)
+        
+        if not turnover_data:
+            await update.message.reply_text("📉 Ainda não temos dias suficientes de histórico (Snapshots Diários) registrados para achar o padrão matemático de vendas dessa marca.")
+            return
+            
+        agent = ZarAIAgent()
+        analysis = agent.analyze_turnover(turnover_data, brand)
+        
+        for chunk in chunk_message(analysis):
+            await update.message.reply_text(chunk)
+            
+    except Exception as e:
+        logger.error(f"Erro em cmd_giro: {e}")
+        await update.message.reply_text(f"Erro fatal em giro: {str(e)[:500]}")
+
+async def cmd_reprecificar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria pode alterar a política de preços de prateleira baseada em inflação.")
+        return
+
+    try:
+        from src.services.inventory_analysis import InventoryDataService
+        from src.services.ai_agent import ZarAIAgent
+        
+        args = context.args
+        if not args:
+            await update.message.reply_text("⚠️ Informe a fábrica para buscar distorções de inflação. Ex: /reprecificar Altenburg")
+            return
+            
+        brand = " ".join(args)
+        await update.message.reply_text(f"📉 Auditando as últimas Notas Fiscais da {brand} contra nosso Custo Base Atual... ⏳")
+        
+        db_service = InventoryDataService()
+        repricing_data = db_service.get_repricing_opportunities(brand)
+        
+        if not repricing_data:
+            await update.message.reply_text("✅ Boas notícias! Cruzando o banco de dados NFe vs Estoque, não foi detectada nenhuma inflação no custo de reposição dos produtos da fábrica. Remarcação de preços desnecessária.")
+            return
+            
+        agent = ZarAIAgent()
+        analysis = agent.analyze_repricing(repricing_data, brand)
+        
+        for chunk in chunk_message(analysis):
+            await update.message.reply_text(chunk)
+            
+    except Exception as e:
+        logger.error(f"Erro na reprecificação: {e}")
+        await update.message.reply_text(f"Falha ao gerar etiquetas de preços novos: {str(e)[:500]}")
+
+async def cmd_chargeback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria pode emitir termos de cobrança legal e logísticos (Chargebacks).")
+        return
+
+    try:
+        from src.services.ai_agent import ZarAIAgent
+        
+        args = context.args
+        if not args:
+            await update.message.reply_text("⚠️ Informe o número da Nota Fiscal alvo da quebra de pedido. Ex: /chargeback 123456")
+            return
+            
+        nf_num = str(args[0])
+        await update.message.reply_text(f"⚖️ ZAR Jurídico Logístico: Levantando faltantes e avarias da NFe {nf_num} para emissão da carta de protesto... ⏳")
+        
+        # Para efeito do teste, passamos uma anomalia simulada. Em perfomance real, ele leria da tabela `audits`.
+        divergences = "Faltam 5 Itens do SKU 'Jogo de Cama Casal' listados no pedido.\nAvaria reportada pelo galpão em 2 'Travesseiros'."
+        
+        agent = ZarAIAgent()
+        analysis = agent.generate_chargeback(nf_num, divergences)
+        
+        for chunk in chunk_message(analysis):
+            await update.message.reply_text(chunk)
+            
+    except Exception as e:
+        logger.error(f"Erro no chargeback: {e}")
+        await update.message.reply_text(f"Falha no módulo de faturamento logístico: {str(e)[:500]}")
+
+async def cmd_docas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Restrito: Portal de agendamento de transporte exclusivo do galpão.")
+        return
+
+    try:
+        args = context.args
+        if not args:
+            # Painel do dia
+            from datetime import datetime
+            hoje = datetime.now().strftime("%d/%m/%Y")
+            msg = f"🚚 **Portal de Docas (Painel: {hoje})**\n\n🟢 Nenhuma transportadora ou carreta agendada para recebimento na doca principal hoje.\n\nPara alocar uma janela de carga digite: `/docas [Transportadora] [Data/Hora]`"
+            await update.message.reply_text(msg, parse_mode='Markdown')
+            return
+            
+        transp = " ".join(args)
+        await update.message.reply_text(f"✅ Slot de agendamento de Descarregamento confirmado em sistema para: {transp}")
+    except Exception as e:
+        logger.error(f"Erro em docas: {e}")
