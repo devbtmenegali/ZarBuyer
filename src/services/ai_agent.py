@@ -14,89 +14,75 @@ class ZarAIAgent:
             raise ValueError("Chave GEMINI_API_KEY não encontrada.")
         # O Client moderno usa `genai.Client`
         self.client = genai.Client(api_key=api_key)
-        self.model_name = "gemini-2.5-flash"  # Modelo rápido e barato para análise
+        self.model_name = "gemini-2.5-flash"  # Modelo rápido e barato para anális
+    def _get_style_guide(self) -> str:
+        return """
+[GUIA DE ESTILO VISUAL ZAR - OBRIGATÓRIO]:
+1. Títulos: Use emojis e negrito (ex: 💎 *TÍTULO*) na primeira linha.
+2. Divisores: Use a linha '━━━━━━━━━━━━━━━━━━━━' para separar seções.
+3. Bullets: Use 🔹 ou 🔸 para itens de lista.
+4. Espaçamento: Use sempre UMA LINHA EM BRANCO entre blocos de informação para não amontoar.
+5. Markdown: Use *negrito* para valores em R$ e nomes de produtos.
+6. Tom: Profundo, executivo e focado em lucro/estratégia.
+"""
 
     def analyze_inventory_health(self, products_data: list) -> str:
         """
         Gera relatórios sobre dead stock, sugestões de queima e bundling
         com base nos dados crus do banco.
         """
-        # Obviamente, p/ muitos dados precisaríamos filtrar antes ou enviar em batch,
-        # Mas para fins do módulo ZAR, pegaremos destaques (produtos com baixo giro, etc).
-        
-        # Calcula os totais REAIS no Python para a IA não errar a matemática
         total_items = sum([float(p.get("Estoque_Qtd", p.get("Quantidade", 0))) for p in products_data])
         total_value = sum([float(p.get("Custo_Total", p.get("Valor_Parado", 0))) for p in products_data])
         
         prompt = f"""
-        Você é o ZAR, um Consultor de Compras e Estoque de Varejo altamente inteligente.
-        
-        Sua tarefa: Analisar os dados de estoque atuais e gerar insights matadores:
-        1. Identificação de Dead Stock ("Micos"): Produtos com alto saldo que precisam de "Queima". Sugira um % de desconto.
-        2. Sugestão de Combos (Bundling): Una produtos de baixo giro com alto giro da mesma marca ou categoria complementar.
-        3. Elasticidade: Destaque o que pode ter o preço reajustado para ganhar margem.
-        
-        [DIRETRIZ MÁXIMA PARA O ZAR]:
-        - SEJA EXTREMAMENTE OBJETIVO E DIRETO. Nada de textos longos, parágrafos genéricos ou enrolação ("yapping").
-        - Seus relatórios devem ser curtos, focados na prática: "O que fazer", "Qual o produto" e "Qual o número".
-        - Use listas curtas (bullet points). Menos palavras, mais ação. O gestor tem pouco tempo.
-        
-        [RESUMO FINANCEIRO EXATO (Não recalcule, use estes números)]:
-        - Quantidade Total de Itens nesta amostra: {total_items}
-        - Valor Total Parado (Custo) nesta amostra: R$ {total_value:,.2f}
+Você é o ZAR Agent. {self._get_style_guide()}
 
-        Hoje é {datetime.now().strftime('%d/%m/%Y')}.
-        
-        DADOS DE ESTOQUE:
-        {json.dumps(products_data[:200], default=str)} # Limitado p/ token window
+Sua tarefa: Gerar Diagnóstico de Saúde de Estoque:
+1. "Micos" (Dead Stock): Produtos parados que precisam de desconto agressivo.
+2. Combos (Bundling): Una o que não vende com o que voa da prateleira.
+3. Alertas Imprevistos: Algum SKU com custo subindo demais ou margem sumindo.
 
-        Responda da forma mais curta e objetiva possível.
-        Evite usar a formatação Markdown (como ** ou #) pois ela foi desabilitada no Telegram. 
-        Pode usar quebras de linha e emojis, mas sem poluir.
-        """
+[RESUMO FINANCEIRO]:
+- Total Itens: {int(total_items)}
+- Valor Parado: R$ {total_value:,.2f}
+
+DADOS DE ESTOQUE:
+{json.dumps(products_data[:100], default=str)}
+
+Gere o relatório seguindo o GUIA DE ESTILO acima.
+"""
 
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.3,
-                )
+                config=types.GenerateContentConfig(temperature=0.3)
             )
             return response.text
         except Exception as e:
             logger.error(f"Erro ao chamar o Gemini: {e}")
-            return f"❌ Erro ao processar inteligência do estoque com o ZAR AI: {str(e)}"
+            return f"❌ Erro na inteligência ZAR: {str(e)}"
             
     def analyze_brand_summary(self, products_data: list, brand: str) -> str:
         total_items = sum([float(p.get("Estoque_Qtd", p.get("Quantidade", 0))) for p in products_data])
         total_value = sum([float(p.get("Custo_Total", p.get("Valor_Parado", 0))) for p in products_data])
         
-        # Média de venda calculada no python p/ não alucinar
         precos = [float(p.get("Preco_Venda", 0)) for p in products_data if float(p.get("Preco_Venda", 0)) > 0]
         media_venda = sum(precos) / len(precos) if precos else 0
-        
         brand_name = (brand or "Geral").upper()
         
         prompt = f"""
-        Você é o ZAR. Resuma a marca {brand_name} no formato EXATO abaixo:
+Você é o ZAR Agent. {self._get_style_guide()}
 
-        📊 RESUMO: {brand_name}
-        • Valor Total em Estoque: R$ {total_value:,.2f}
-        • Número de Itens em Estoque: {int(total_items)}
-        • Média de Preço de Venda: R$ {media_venda:,.2f}
-        
-        Com base na amostra de dados, separe os produtos em 2 listas diretas:
-        🛒 ITENS "MAIS VENDIDOS" / ALTO GIRO (Estoque Baixo)
-        - [Nome do Produto]
-        
-        📦 ITENS DEAD STOCK / MICOS (Estoque Alto parado)
-        - [Nome do Produto]
-        
-        DADOS PARA ANÁLISE: {json.dumps(products_data[:200], default=str)}
-        
-        [REGRA]: ZERO Markdown (nenhum * ou #). Fiel ao formato acima, sinta-se livre para usar emojis. Nada de enrolação inicial.
-        """
+Resuma a marca *{brand_name}* com foco em performance:
+- Mostre o Valor Total e Qtd de Itens.
+- Liste os 3 MAIS VENDIDOS (Giro Alto).
+- Liste os 3 PIORES (Micos).
+
+DADOS: {json.dumps(products_data[:100], default=str)}
+
+Siga RIGOROSAMENTE o GUIA DE ESTILO para um visual limpo e premium.
+"""
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
@@ -108,25 +94,22 @@ class ZarAIAgent:
             return f"❌ Erro na análise de Marca: {str(e)}"
 
     def analyze_negotiation(self, current_margin: float, proposed_cost: float, selling_price: float) -> str:
-        """
-        Ruptura de margem e reprecificação dinâmica numa negociação ao vivo.
-        """
         prompt = f"""
-        Você é o ZAR. Recebemos uma proposta de um fornecedor:
-        Custo proposto: R$ {proposed_cost}
-        Preço de Venda Praticado: R$ {selling_price}
-        Margem ideal exigida: {current_margin}%
-        
-        Calcule instantaneamente:
-        1. A margem nova.
-        2. Isso inviabiliza nosso preço de venda local? (Ruptura de Margem)
-        3. Podemos aceitar subindo o preço atual do estoque parado? (Reprecificação Dinâmica)
-        Seja direto e aja como o conselheiro da mesa de negociação.
-        """
+Você é o ZAR Agent na mesa de negociação. {self._get_style_guide()}
+
+Analise esta proposta de custo:
+- Custo Proposto: R$ {proposed_cost}
+- Venda Atual: R$ {selling_price}
+- Margem Alvo: {current_margin}%
+
+Dê o veredito rápido: Aceitar, Recusar ou Reprecificar?
+Siga o estilo visual LIMPO (com divisores).
+"""
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
-                contents=prompt
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.1)
             )
             return response.text
         except Exception as e:
@@ -218,19 +201,16 @@ class ZarAIAgent:
     def analyze_purchase_recommendations(self, custom_data: list, brand: str) -> str:
         brand_name = (brand or "Geral")
         prompt = f"""
-        Você é o ZAR, sugerindo um Pedido de Compra Urgente.
-        Recebemos produtos da marca/categoria {brand_name} com ESTOQUE BAIXO ou ZERADO.
-        
-        Sua tarefa:
-        1. Liste os itens críticos a serem repostos.
-        2. Dê uma sugestão de quantidade a comprar (pense em pelo menos 10 ou 20 por item dependendo do ticket).
-        3. Formate com clareza usando emojis de alerta 🚨.
-        
-        Seja super conciso. Zero papo furado. Não avise que é uma simulação.
+Você é o ZAR Agent. {self._get_style_guide()}
 
-        DADOS:
-        {json.dumps(custom_data[:100], default=str)}
-        """
+Sugira um PEDIDO DE COMPRA para a marca *{brand_name}* focando apenas no crítico (Risco de Ruptura).
+- Liste SKU, Preço de Custo e Qtd Sugerida.
+- Use emojis 🚨 para itens zerados.
+
+DADOS: {json.dumps(custom_data[:100], default=str)}
+
+Siga o estilo visual PREMIUM (Divisores e Espaçamento).
+"""
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
@@ -243,18 +223,17 @@ class ZarAIAgent:
 
     def analyze_product_comparison(self, custom_data: list, keyword: str) -> str:
         prompt = f"""
-        Você é o ZAR. Analise os preços e margens de produtos similares do tipo '{keyword}'.
-        
-        Sua tarefa:
-        1. Identifique discrepâncias de preços (produtos similares com preços muito diferentes).
-        2. Destaque se há algum produto "canibalizando" o outro (ex: um produto melhor custando o mesmo que um inferior, ou margens espremidas).
-        3. Dê uma sugestão de reajuste de preço (Reprecificação Dinâmica) se aplicável.
-        
-        Seja super conciso. Use bullet points e emojis. Recomende a ação a ser tomada.
-        
-        DADOS DE COMPARAÇÃO:
-        {json.dumps(custom_data, default=str)}
-        """
+Você é o ZAR Agent. {self._get_style_guide()}
+
+Analise a comparação de produtos para o termo *{keyword}*.
+- Identifique quem está caro ou barato demais.
+- Sugira ajustes de Markup.
+- Use emojis ⚖️ para comparações.
+
+DADOS: {json.dumps(custom_data, default=str)}
+
+Siga o padrão visual PREMIUM e limpo.
+"""
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
@@ -267,18 +246,17 @@ class ZarAIAgent:
 
     def generate_supplier_pitch(self, custom_data: list, brand: str) -> str:
         prompt = f"""
-        Você é o ZAR, diretor logístico e de compras.
-        Escreva uma mensagem comercial persuasiva (um "Pitch") direcionada ao representante da marca '{brand}'.
-        O objetivo é usar nosso ALTO GIRO dos produtos listados abaixo para negociar um lote maior com desconto expressivo.
-        
-        Sua tarefa:
-        1. Crie uma mensagem pronta para ser enviada por WhatsApp (formal mas direta, com emojis moderados).
-        2. Destaque o sucesso de giro dos itens listados (que estão com pouco estoque).
-        3. Peça uma proposta de preço agressiva para reposição de lote fechado.
-        
-        DADOS DE OPORTUNIDADE:
-        {json.dumps(custom_data, default=str)}
-        """
+Você é o Diretor de Compras do ZAR. {self._get_style_guide()}
+
+Escreva um PITCH para o representante da *{brand}* via WhatsApp.
+- Use nossa performance de giro como alavanca de negociação.
+- Peça desconto para lote fechado.
+- Seja direto, profissional e use emojis 🤝💵.
+
+DADOS DE SUCESSO: {json.dumps(custom_data, default=str)}
+
+Gere a mensagem pronta para copiar, respeitando o espaçamento clean.
+"""
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
@@ -292,17 +270,17 @@ class ZarAIAgent:
     def analyze_cash_flow(self, payables: list) -> str:
         import json
         prompt = f"""
-Você atua como o Diretor Financeiro (CFO) do ZAR Agent.
-As notas fiscais enviadas recentemente geraram as seguintes parcelas a pagar:
+Você é o CFO do ZAR. {self._get_style_guide()}
+
+Gere o RELATÓRIO DE FLUXO DE CAIXA (Boletos das NFes).
+- Mostre os picos de pagamento na semana.
+- Alerte sobre boletos pesados.
+- Dê um insight sobre alongar prazo ou antecipar.
+
+PAGAMENTOS PENDENTES:
 {json.dumps(payables, indent=2, ensure_ascii=False)}
 
-Gere um sumário executivo focado no Fluxo de Caixa:
-1. Quanto teremos que desembolsar em breve? Destaque as maiores concentrações de valores por Data de Vencimento.
-2. Quais Fornecedores têm a maior fatia à pagar?
-3. Otimização Financeira: Em um curto Insight, informe se caberia renegociar os próximos pedidos focando em prazo alongado de pagamento (para aliviar os picos de desembolso) ou pagamento antecipado (se o caixa estiver folgado em certas semanas).
-
-Regras de Estilo:
-Use bullets diretos, não use Markdown exagerado e use um tom cirúrgico.
+Mantenha o visual CLEAN e EXECUTIVO. Use divisores.
 """
         from google import genai
         from google.genai import types
@@ -319,19 +297,17 @@ Use bullets diretos, não use Markdown exagerado e use um tom cirúrgico.
     def analyze_turnover(self, data: list, brand: str) -> str:
         import json
         prompt = f"""
-Você é o ZAR Agent, Diretor de Supply Chain. {self._get_seasonality_context()}
+Você é o Diretor de Supply Chain do ZAR. {self._get_style_guide()} {self._get_seasonality_context()}
 
-Analise este relatório de GIRO DE ESTOQUE (Sales Velocity) da fábrica '{brand}'.
-Os produtos estão ordenados por "Dias_Cobertura" (os primeiros vão zerar antes).
-Dados Reais:
+Gere o DIAGNÓSTICO DE GIRO DE ESTOQUE para *{brand}*.
+- Mostre os DIAS DE COBERTURA (quem acaba primeiro).
+- Indique quem vende como água (Curva A).
+- Revele os "Micos" parados (999 dias).
+
+DADOS:
 {json.dumps(data, indent=2, ensure_ascii=False)}
 
-Gere um diagnóstico em bullets destacando:
-1. Risco Iminente: Quais produtos vão acabar nos próximos 15 dias (Risco de ruptura)?
-2. Curvas A viciadas: Quais produtos vendem rápido (Venda_Dia alta) e precisam de mais volume por pedido de reposição?
-3. Tranqueiras (Dead Stock): Destaque (se houver) algum produto com giro nulo (999 dias de cobertura) para o Dono olhar.
-
-Não force formatação excessiva (use emojis controlados) e dê um tom autoritário e logístico.
+Foque no visual ORGANIZADO (Use divisores e emojis táticos).
 """
         from google import genai
         from google.genai import types
@@ -348,19 +324,17 @@ Não force formatação excessiva (use emojis controlados) e dê um tom autorit�
     def analyze_repricing(self, data: list, brand: str) -> str:
         import json
         prompt = f"""
-Você atua como o Diretor de Pricing (Pricing Manager) do ZAR Agent.
-Analise a INFLAÇÃO DE CUSTO (Divergência NFe vs Estoque) da fábrica '{brand}'.
-Os itens abaixo chegaram na última Nota Fiscal mais CAROS do que nosso Custo Base Estocado.
-Dados Reais de Inflação:
+Você é o Pricing Manager do ZAR. {self._get_style_guide()}
+
+Gere a AUDITORIA DE INFLAÇÃO E REPRECIFICAÇÃO para *{brand}*.
+- Liste itens onde o custo na NF veio maior que o custo em estoque.
+- Sugira o *Preço novo* para proteger a margem.
+- Dê o veredito: manter ou descontinuar o produto.
+
+DADOS DE INFLAÇÃO:
 {json.dumps(data, indent=2, ensure_ascii=False)}
 
-Gere um diagnóstico focado em Remarcação de Preços (Reprecificação):
-1. Destaque os itens com o maior choque de inflação no custo.
-2. Alerte a equipe sobre o "Novo_Preco_Sugerido" para ser aplicado imediatamente nas etiquetas da loja, de modo a não perdermos o markup (a margem bruta) sobre o custo de reposição atualizado.
-3. Decisão Drástica: Informe se o custo inflou tanto (ex: acima de 15%) que talvez seria melhor nós pararmos de comprar esse SKU ao invés de aumentar tanto o preço final.
-
-Regras de Estilo:
-Use bullets diretos, emojis controlados 📉💰 e seja taxativo.
+Gere o relatório em blocos bem separados e destacados.
 """
         from google import genai
         from google.genai import types
@@ -378,20 +352,18 @@ Use bullets diretos, emojis controlados 📉💰 e seja taxativo.
         from datetime import datetime
         hj = datetime.now().strftime("%d/%m/%Y")
         prompt = f"""
-Você é o Assistente Jurídico/Logístico (ZAR Chargeback) de uma grande empresa de Varejo.
-Recebemos hoje ({hj}) a Nota Fiscal de número {invoice_num}, mas após nossa auditoria de recebimento cruzando com o XML, detectamos graves falhas/faltas de envio comparado ao nosso Pedido Original.
+Você é o ZAR Jurídico. {self._get_style_guide()}
 
-Faltas / Divergências Encontradas:
+Escreva uma CARTA DE PROTESTO DE FATURA para a NFe *{invoice_num}*.
+- Reclame das faltas e avarias citadas.
+- Exija desconto/abatimento.
+- Deixe campos [ ] para preenchimento.
+
+DIVERGÊNCIAS:
 {divergences}
 
-Escreva uma "CARTA DE COBRANÇA E PROTESTO DE FATURA" formal, contundente, pronta para o dono da loja dar CTRL+C e mandar no WhatsApp ou Email do representante da fábrica.
-Regras:
-1. Exija abatimento imediato no valor do respectivo boleto/duplicata da nota.
-2. Formalize que a mercadoria chegou avariada ou faltando.
-3. Seja incisivo, use tom jurídico/comercial, e gere os campos em branco (como "[Nome do Fornecedor]") para o dono preencher.
+Gere o documento seguindo o visual ORGANIZADO (Use divisores).
 """
-        from google import genai
-        from google.genai import types
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
