@@ -834,6 +834,76 @@ async def cmd_docas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Erro em docas: {e}")
 
+async def cmd_tagplus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria pode acessar o ERP TagPlus.")
+        return
+
+    from src.services.tagplus_api import TagPlusAPI
+    
+    await update.message.reply_text("📡 Conectando ao ERP TagPlus e buscando produtos...")
+    
+    try:
+        api = TagPlusAPI()
+        products = api.get_products()
+        
+        if products is None:
+            await update.message.reply_text("❌ Erro ao conectar com a TagPlus.")
+            return
+            
+        if not products:
+            await update.message.reply_text("Nenhum produto encontrado na base da TagPlus.")
+            return
+            
+        msg = f"📦 *Produtos encontrados na TagPlus ({len(products)}):*\n\n"
+        for p in products:
+            desc = p.get('descricao', 'Sem nome')
+            preco = p.get('valor_venda_padrao', 'N/A')
+            msg += f"• *{desc}* | Venda: R$ {preco}\n"
+            
+        for chunk in chunk_message(msg):
+            await update.message.reply_text(chunk, parse_mode="Markdown")
+            
+    except Exception as e:
+        logger.error(f"Erro no TagPlus: {e}")
+        await update.message.reply_text(f"Ocorreu um erro ao listar produtos da TagPlus: {str(e)[:500]}")
+
+async def cmd_sync_tagplus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria pode forçar sincronização massiva do ERP nas nuvens da IA.")
+        return
+
+    from src.services.tagplus_sync import TagPlusSyncService
+    
+    await update.message.reply_text("🔄 Desativando o motor Excel antigo e ativando ponte de dados direta com ERP TagPlus... Isso pode demorar se você tiver milhares de itens.")
+    
+    try:
+        sync_service = TagPlusSyncService()
+        success, message = sync_service.sync_inventory()
+        
+        if success:
+            await update.message.reply_text(message, parse_mode="Markdown")
+            await update.message.reply_text("🎉 Seu banco de dados da IA agora reflete o exato segundo em que estamos. Você pode testar comandos como `/micos` que a IA beberá dessa nova fonte imediata!")
+        else:
+            await update.message.reply_text(str(message))
+            
+    except Exception as e:
+        logger.error(f"Erro no Sincronizador: {e}")
+        await update.message.reply_text(f"Ocorreu um curto-circuito ao gravar dados TagPlus no banco neural: {str(e)[:500]}")
+
+async def cmd_testar_alertas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not is_admin(auth):
+        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria testa os Pushes Diários.")
+        return
+        
+    await update.message.reply_text("⏩ Acelerando o tempo para 08:00 AM... Forçando ZAR a processar Anomalias em Background. Aguarde a mensagem autônoma...")
+    
+    from src.services.scheduler import run_morning_alerts
+    await run_morning_alerts(context)
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     
@@ -868,7 +938,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "giro": cmd_giro,
             "reprecificar": cmd_reprecificar,
             "chargeback": cmd_chargeback,
-            "docas": cmd_docas
+            "docas": cmd_docas,
+            "tagplus": cmd_tagplus,
+            "sync_tagplus": cmd_sync_tagplus,
+            "testar_alertas": cmd_testar_alertas
         }
         
         if intent in command_map.keys():

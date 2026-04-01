@@ -48,7 +48,7 @@ if __name__ == '__main__':
         
     application = ApplicationBuilder().token(TOKEN).build()
     
-    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos, cmd_pendencias, cmd_negociar, cmd_comprar, cmd_comparar, cmd_cotar, cmd_admin, cmd_sou_fornecedor, cmd_caixa, cmd_giro, cmd_reprecificar, cmd_chargeback, cmd_docas, handle_text
+    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos, cmd_pendencias, cmd_negociar, cmd_comprar, cmd_comparar, cmd_cotar, cmd_admin, cmd_sou_fornecedor, cmd_caixa, cmd_giro, cmd_reprecificar, cmd_chargeback, cmd_docas, cmd_tagplus, cmd_sync_tagplus, cmd_testar_alertas, handle_text
     from telegram.ext import MessageHandler, filters
     
     start_handler = CommandHandler('start', start_command)
@@ -66,6 +66,9 @@ if __name__ == '__main__':
     reprecificar_handler = CommandHandler('reprecificar', cmd_reprecificar)
     chargeback_handler = CommandHandler('chargeback', cmd_chargeback)
     docas_handler = CommandHandler('docas', cmd_docas)
+    tagplus_handler = CommandHandler('tagplus', cmd_tagplus)
+    sync_tagplus_handler = CommandHandler('sync_tagplus', cmd_sync_tagplus)
+    testar_alertas_handler = CommandHandler('testar_alertas', cmd_testar_alertas)
     doc_handler = MessageHandler(filters.Document.ALL, handle_document)
     text_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     
@@ -84,8 +87,27 @@ if __name__ == '__main__':
     application.add_handler(comprar_handler)
     application.add_handler(comparar_handler)
     application.add_handler(cotar_handler)
+    application.add_handler(tagplus_handler)
+    application.add_handler(sync_tagplus_handler)
+    application.add_handler(testar_alertas_handler)
     application.add_handler(doc_handler)
     application.add_handler(text_handler)
     
     logger.info("Bot ZAR iniciado com Inteligência Artificial!")
+    
+    # === AGENDAMENTO DE TAREFAS (CRON JOBS) ===
+    import datetime
+    from src.services.scheduler import run_morning_alerts
+    
+    # Ajusta timezone para horário do Brasil (UTC-3)
+    tz_br = datetime.timezone(datetime.timedelta(hours=-3))
+    agendamento_matinal = datetime.time(hour=8, minute=0, tzinfo=tz_br)
+    
+    # Se tivermos um application.job_queue válido (PTB 20+)
+    if application.job_queue:
+        application.job_queue.run_daily(run_morning_alerts, time=agendamento_matinal, days=(0, 1, 2, 3, 4, 5, 6))
+        logger.info(f"⌚ Relojoaria Configurada: ZAR despertará às {agendamento_matinal} todos os dias para disparar Alertas Estratégicos.")
+    else:
+        logger.warning("JobQueue não ativado. Notificações Passivas requererão uso externo ou trigger manual.")
+
     application.run_polling()
