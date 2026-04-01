@@ -38,11 +38,11 @@ class ZarVoiceService:
             # O serviço de API Python do Gemini é majoritariamente Síncrono no SDK novo.
             # Vamos rodá-lo na ThreadPool assíncrona para não travar o bot do Telegram:
             def _sync_gemini_tts():
-                # O comando ideal para o modelo Gemini 2.5 falar:
+                # O comando ideal para o modelo Gemini 2.0 falar:
                 prompt_speak = f"Por favor, leia exatamente o texto a seguir com tom executivo, pragmático e direto em português brasileiro:\n\n{truncated_text}"
                 
                 response = self.client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-2.0-flash',
                     contents=prompt_speak,
                     config=types.GenerateContentConfig(
                         temperature=0.1,
