@@ -48,7 +48,7 @@ if __name__ == '__main__':
         
     application = ApplicationBuilder().token(TOKEN).build()
     
-    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos, cmd_pendencias, cmd_negociar, cmd_comprar, cmd_comparar, cmd_cotar, cmd_admin, cmd_sou_fornecedor, cmd_caixa, cmd_giro, cmd_reprecificar, cmd_chargeback, cmd_docas, cmd_tagplus, cmd_sync_tagplus, cmd_testar_alertas, handle_text
+    from src.bot.handlers import start_command, handle_document, cmd_analisar, cmd_micos, cmd_pendencias, cmd_negociar, cmd_comprar, cmd_comparar, cmd_cotar, cmd_admin, cmd_sou_fornecedor, cmd_caixa, cmd_giro, cmd_reprecificar, cmd_chargeback, cmd_docas, cmd_tagplus, cmd_sync_tagplus, cmd_testar_alertas, handle_text, handle_voice
     from telegram.ext import MessageHandler, filters
     
     start_handler = CommandHandler('start', start_command)
@@ -71,6 +71,7 @@ if __name__ == '__main__':
     testar_alertas_handler = CommandHandler('testar_alertas', cmd_testar_alertas)
     doc_handler = MessageHandler(filters.Document.ALL, handle_document)
     text_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
+    voice_handler = MessageHandler(filters.VOICE, handle_voice)
     
     application.add_handler(start_handler)
     application.add_handler(admin_handler)
@@ -92,6 +93,7 @@ if __name__ == '__main__':
     application.add_handler(testar_alertas_handler)
     application.add_handler(doc_handler)
     application.add_handler(text_handler)
+    application.add_handler(voice_handler)
     
     logger.info("Bot ZAR iniciado com Inteligência Artificial!")
     

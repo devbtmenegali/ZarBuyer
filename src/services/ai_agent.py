@@ -426,3 +426,23 @@ Formato:
             return json.loads(raw.strip())
         except Exception as e:
             return {"intent": "chat_normal", "brand": None, "args": None}
+
+    def transcribe_audio(self, audio_file_path: str) -> str:
+        """
+        Recebe o caminho de um arquivo de áudio local e usa a inteligência
+        multimodal do Gemini para transcrever exatamente o que foi falado.
+        """
+        prompt = "Transcreva perfeitamente as exatas palavras ditas neste áudio. Não narre a cena. Apenas retorne o texto puro transcrito com pontuação adequada."
+        from google import genai
+        from google.genai import types
+        try:
+            uploaded_file = self.client.files.upload(file=audio_file_path)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=[uploaded_file, prompt],
+                config=types.GenerateContentConfig(temperature=0.0)
+            )
+            return response.text.strip()
+        except Exception as e:
+            logger.error(f"Erro ao transcrever áudio com Gemini: {e}")
+            return None

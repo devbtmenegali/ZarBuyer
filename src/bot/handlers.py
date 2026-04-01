@@ -904,19 +904,7 @@ async def cmd_testar_alertas(update: Update, context: ContextTypes.DEFAULT_TYPE)
     from src.services.scheduler import run_morning_alerts
     await run_morning_alerts(context)
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    
-    if text.startswith("/"):
-        return
-        
-    auth = await get_user_auth(update.effective_user.id)
-    if not auth:
-        await update.message.reply_text("⛔ Faça login antes de conversar comigo.\nEx: /sou_fornecedor [Sua Marca] ou /admin [Senha]")
-        return
-        
-    await update.message.reply_chat_action(action="typing")
-    
+async def route_intent(text: str, update: Update, context: ContextTypes.DEFAULT_TYPE, auth: dict):
     from src.services.ai_agent import ZarAIAgent
     agent = ZarAIAgent()
     
@@ -947,7 +935,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if intent in command_map.keys():
             fake_args = []
             if brand and brand.strip():
-                # Se for nome composto ex Karsten Casa nós preservaremos passando em array
                 fake_args.extend(brand.split())
             elif args_extra and args_extra.strip():
                 fake_args.extend(str(args_extra).split())
@@ -957,11 +944,91 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"🧠 *ZAR NLP:* Identifiquei seu desejo de `/{intent}`. Ativando engrenagens operacionais...", parse_mode='Markdown')
             
             target_cmd = command_map[intent]
-            # Mapeia e executa a função velha enganando com os args dinamicos da IA
+            
+            # --- ZAR VOICE ENGINE: MONKEY PATCHING ---
+            # Se o usuário enviou uma mensagem de áudio, a ZAR DEVE responder em áudio!
+            if context.user_data.get("reply_as_voice"):
+                original_reply_text = update.message.reply_text
+                import types
+                
+                async def augmented_voice_reply(*args, **kwargs):
+                    # 1. Envia o texto limpo para o chefe poder ler se preferir
+                    msg_text = args[0] if args else kwargs.get('text', '')
+                    await original_reply_text(*args, **kwargs)
+                    
+                    # 2. Sintetiza a voz no background e dispara o Player de Áudio Oficial do Telegram
+                    try:
+                        from src.services.tts_service import ZarVoiceService
+                        tts = ZarVoiceService()
+                        audio_stream = await tts.generate_speech(msg_text)
+                        if audio_stream:
+                            await update.message.reply_voice(voice=audio_stream)
+                    except Exception as tts_e:
+                        logger.error(f"Erro TTS Motor: {tts_e}")
+                        
+                update.message.reply_text = types.MethodType(augmented_voice_reply, update.message)
+            # ------------------------------------------
+
             await target_cmd(update, context)
         else:
-            await update.message.reply_text("🤖 Desculpe, fui desenhado para auditorias de estoque e cálculos de varejo. Pode ser mais direto na sua solicitação comercial?")
+            await update.message.reply_text("🤖 Desculpe, não encontrei uma função comercial para isso. Minha especialidade é auditoria de estoque em Supply Chain corporativo. Pode ser mais direto?")
             
     except Exception as e:
         logger.error(f"Erro Cérebro NLP: {e}")
-        await update.message.reply_text("Tive um curto-circuito na minha rede neural tentando ler a intenção da sua mensagem.")
+        await update.message.reply_text("Tive um curto-circuito na minha rede neural tentando ler a intenção da sua fala.")
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    
+    if text.startswith("/"):
+        return
+        
+    auth = await get_user_auth(update.effective_user.id)
+    if not auth:
+        await update.message.reply_text("⛔ Faça login antes de conversar comigo.\nEx: /sou_fornecedor [Sua Marca] ou /admin [Senha]")
+        return
+        
+    await update.message.reply_chat_action(action="typing")
+    await route_intent(text, update, context, auth)
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    auth = await get_user_auth(update.effective_user.id)
+    if not auth:
+        await update.message.reply_text("⛔ Faça login antes de usar os comandos de voz.")
+        return
+        
+    await update.message.reply_chat_action(action="record_voice")
+    
+    try:
+        voice = update.message.voice
+        voice_file = await context.bot.get_file(voice.file_id)
+        
+        import os
+        import uuid
+        file_path = f"/tmp/{voice.file_id}_{uuid.uuid4().hex[:6]}.ogg"
+        await voice_file.download_to_drive(file_path)
+        
+        from src.services.ai_agent import ZarAIAgent
+        agent = ZarAIAgent()
+        
+        # Ouve o áudio:
+        transcription = agent.transcribe_audio(file_path)
+        
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            
+        if not transcription:
+            await update.message.reply_text("Desculpe, a IA teve dificuldade acústica em transcrever a frase perfeitamente.")
+            return
+            
+        await update.message.reply_text(f"🗣️ *Transcrição de Áudio:* _{transcription}_", parse_mode="Markdown")
+        await update.message.reply_chat_action(action="typing")
+        
+        # Redirecionando texto limpo extraído do áudio para funil cerebral padrão
+        context.user_data["reply_as_voice"] = True
+        await route_intent(transcription, update, context, auth)
+        context.user_data["reply_as_voice"] = False
+        
+    except Exception as e:
+        logger.error(f"Erro no processamento de voz: {e}")
+        await update.message.reply_text(f"Erro ao processar as ondas de áudio e extração verbal. {str(e)[:500]}")
