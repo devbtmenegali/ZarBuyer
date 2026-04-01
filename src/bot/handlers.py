@@ -1,6 +1,20 @@
 import os
 import logging
 from telegram import Update
+
+async def reply_zar(update, context, text, **kwargs):
+    await update.message.reply_text(text, **kwargs)
+    if context.user_data.get("reply_as_voice"):
+        try:
+            from src.services.tts_service import ZarVoiceService
+            import logging
+            tts = ZarVoiceService()
+            audio_stream = await tts.generate_speech(text)
+            if audio_stream:
+                await update.message.reply_voice(voice=audio_stream)
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Erro Interno no TTS: {e}")
+
 from telegram.ext import ContextTypes
 from src.services.excel_parser import ExcelInventoryParser
 from src.db.supabase_client import get_supabase_client
@@ -36,7 +50,7 @@ def is_supplier(user_auth, requested_brand=""):
 async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args:
-        await update.message.reply_text("🔑 Uso correto: /admin [sua_senha_secreta]")
+        await reply_zar(update, context, "🔑 Uso correto: /admin [sua_senha_secreta]")
         return
         
     senha_enviada = args[0]
@@ -53,14 +67,14 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             supabase.table('bot_users').insert({'telegram_id': tg_id, 'role': 'admin', 'brand': 'TODAS'}).execute()
             
-        await update.message.reply_text("🔓 Acesso ADMINISTRADOR liberado! Você tem controle total do ZAR Agent.")
+        await reply_zar(update, context, "🔓 Acesso ADMINISTRADOR liberado! Você tem controle total do ZAR Agent.")
     else:
-        await update.message.reply_text("❌ Senha incorreta. Acesso negado.")
+        await reply_zar(update, context, "❌ Senha incorreta. Acesso negado.")
 
 async def cmd_sou_fornecedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args:
-        await update.message.reply_text("🏢 Uso correto: /sou_fornecedor [Nome da Sua Marca]\nExemplo: /sou_fornecedor Altenburg")
+        await reply_zar(update, context, "🏢 Uso correto: /sou_fornecedor [Nome da Sua Marca]\nExemplo: /sou_fornecedor Altenburg")
         return
         
     brand = " ".join(args)
@@ -87,10 +101,10 @@ async def cmd_sou_fornecedor(update: Update, context: ContextTypes.DEFAULT_TYPE)
         supabase.table('bot_users').insert({'telegram_id': tg_id, 'role': 'supplier', 'brand': brand}).execute()
         brand_to_show = brand
         
-    await update.message.reply_text(f"🤝 Bem-vindo, Fornecedor! O ZAR está configurado para o seu portfólio atual:\n📦 {brand_to_show}")
+    await reply_zar(update, context, f"🤝 Bem-vindo, Fornecedor! O ZAR está configurado para o seu portfólio atual:\n📦 {brand_to_show}")
 # --- COMANDOS PRINCIPAIS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    await reply_zar(update, context, 
         "Olá! Sou o Agente ZAR.\n\n"
         "Se você é o DONO, faça o login com: /admin [senha]\n"
         "Se você é FORNECEDOR, digite: /sou_fornecedor [sua_marca]"
@@ -99,17 +113,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Negado: Apenas Administradores podem fazer upload de XML de Notas Fiscais ou Planilhas.")
+        await reply_zar(update, context, "⛔ Acesso Negado: Apenas Administradores podem fazer upload de XML de Notas Fiscais ou Planilhas.")
         return
 
     doc = update.message.document
     
     allowed_extensions = ('.xlsx', '.xml', '.pdf')
     if not doc.file_name.lower().endswith(allowed_extensions):
-        await update.message.reply_text("Por favor, envie um arquivo Excel (.xlsx), Nota Fiscal (.xml) ou Pedido (.pdf).")
+        await reply_zar(update, context, "Por favor, envie um arquivo Excel (.xlsx), Nota Fiscal (.xml) ou Pedido (.pdf).")
         return
         
-    await update.message.reply_text(f"📥 Recebi o arquivo: {doc.file_name}. Acionando sensores adequados...")
+    await reply_zar(update, context, f"📥 Recebi o arquivo: {doc.file_name}. Acionando sensores adequados...")
     
     try:
         # Baixar o arquivo do Telegram
@@ -187,7 +201,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.warning(f"A tabela accounts_payable ainda não existe ou erro salvando boletos: {ex}")
 
             if order_data:
-                await update.message.reply_text("🔍 Pedido Localizado no Banco de Dados! Acionando ZAR Auditor Neural para bater Itens e Preços...")
+                await reply_zar(update, context, "🔍 Pedido Localizado no Banco de Dados! Acionando ZAR Auditor Neural para bater Itens e Preços...")
                 agent = ZarAIAgent()
                 audit_data = agent.audit_invoice_vs_order(order_data, nf_data)
                 
@@ -208,9 +222,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     report_text = "❌ Ocorreu um erro com a formatação neural da Auditoria. A NFe foi importada, mas o Pedido não sofreu baixa."
                 
                 for chunk in chunk_message(report_text):
-                    await update.message.reply_text(chunk)
+                    await reply_zar(update, context, chunk)
             else:
-                await update.message.reply_text(f"✅ Nota Fiscal Gravada! (Nenhum Pedido Original encontado no sistema para auditar contra a nota {nf_data['invoice_number']}).")
+                await reply_zar(update, context, f"✅ Nota Fiscal Gravada! (Nenhum Pedido Original encontado no sistema para auditar contra a nota {nf_data['invoice_number']}).")
 
             if os.path.exists(temp_path):
                 os.remove(temp_path)
@@ -220,12 +234,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             from src.services.ai_agent import ZarAIAgent
             from datetime import datetime
             
-            await update.message.reply_text("👁️ Ativando a Visão Computacional do ZAR para ler seu PDF e extrair JSON...")
+            await reply_zar(update, context, "👁️ Ativando a Visão Computacional do ZAR para ler seu PDF e extrair JSON...")
             agent = ZarAIAgent()
             pdf_data = agent.parse_purchase_order_pdf(temp_path)
             
             if not pdf_data or "items" not in pdf_data:
-                await update.message.reply_text("❌ Falha crítica: O documento PDF não continha dados legíveis ou a IA rejeitou a formatação.")
+                await reply_zar(update, context, "❌ Falha crítica: O documento PDF não continha dados legíveis ou a IA rejeitou a formatação.")
                 return
                 
             supabase = get_supabase_client()
@@ -256,7 +270,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i in range(0, len(po_items), 200):
                 supabase.table('purchase_order_items').insert(po_items[i:i+200]).execute()
                 
-            await update.message.reply_text(
+            await reply_zar(update, context, 
                 f"📋 *PEDIDO GRAVADO COM SUCESSO!*\n"
                 f"🏢 Fábrica: {sup_name}\n"
                 f"📦 Itens Distintos: {len(po_items)}\n"
@@ -277,7 +291,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parser = ExcelInventoryParser(temp_path)
         parsed_data = parser.parse_daily_inventory()
         
-        await update.message.reply_text(f"Li {len(parsed_data)} produtos validos na planilha. Atualizando banco de dados...")
+        await reply_zar(update, context, f"Li {len(parsed_data)} produtos validos na planilha. Atualizando banco de dados...")
         
         # Inserção no Supabase (Upsert nos Produtos, Insert no Snapshot)
         supabase = get_supabase_client()
@@ -335,13 +349,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(temp_path):
             os.remove(temp_path)
             
-        await update.message.reply_text(
+        await reply_zar(update, context, 
             f"Processamento super rápido concluído! {len(snapshots_batch)} registros atualizados no estoque de hoje."
         )
 
     except Exception as e:
         logger.error(f"Erro no processamento: {e}")
-        await update.message.reply_text(f"Ocorreu um erro no processamento do arquivo: {str(e)}")
+        await reply_zar(update, context, f"Ocorreu um erro no processamento do arquivo: {str(e)}")
 
 
 def chunk_message(text, size=4000):
@@ -350,7 +364,7 @@ def chunk_message(text, size=4000):
 async def cmd_analisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not auth:
-        await update.message.reply_text("⛔ Faça login para acessar o sistema de análises.")
+        await reply_zar(update, context, "⛔ Faça login para acessar o sistema de análises.")
         return
 
     try:
@@ -366,44 +380,44 @@ async def cmd_analisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if len(auth_brands) == 1:
                     brandFilter = auth_brands[0]
                 else:
-                    await update.message.reply_text(f"⚠️ Você representa múltiplas marcas: {auth['brand']}\nPor favor, digite qual deseja analisar. Ex: /analisar {auth_brands[0]}")
+                    await reply_zar(update, context, f"⚠️ Você representa múltiplas marcas: {auth['brand']}\nPor favor, digite qual deseja analisar. Ex: /analisar {auth_brands[0]}")
                     return
             else:
                 if not is_supplier(auth, brandFilter):
-                    await update.message.reply_text(f"🔒 Acesso Fornecedor: Redirecionamento negado para '{brandFilter}'. Suas marcas permitidas: {auth['brand']}")
+                    await reply_zar(update, context, f"🔒 Acesso Fornecedor: Redirecionamento negado para '{brandFilter}'. Suas marcas permitidas: {auth['brand']}")
                     return
         
-        await update.message.reply_text("Consultando o banco de dados... 🔎")
+        await reply_zar(update, context, "Consultando o banco de dados... 🔎")
         
         db_service = InventoryDataService()
         data = db_service.get_brand_summary(brandFilter)
         
         if not data:
-            await update.message.reply_text("Não encontrei produtos desta marca no banco.")
+            await reply_zar(update, context, "Não encontrei produtos desta marca no banco.")
             return
             
-        await update.message.reply_text(f"Encontrei os produtos. Acionando a Inteligência ZAR (Gemini) para diagnosticar... 🤖")
+        await reply_zar(update, context, f"Encontrei os produtos. Acionando a Inteligência ZAR (Gemini) para diagnosticar... 🤖")
         
         agent = ZarAIAgent()
         report = agent.analyze_brand_summary(data, brandFilter)
         
         for chunk in chunk_message(report):
-            await update.message.reply_text(chunk, parse_mode="HTML")
+            await reply_zar(update, context, chunk, parse_mode="HTML")
             
     except Exception as e:
-        await update.message.reply_text(f"Erro fatal em analisar: {str(e)[:500]}")
+        await reply_zar(update, context, f"Erro fatal em analisar: {str(e)[:500]}")
 
 async def cmd_micos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria pode mapear Dead Stock e Combos.")
+        await reply_zar(update, context, "⛔ Acesso Restrito: Apenas a diretoria pode mapear Dead Stock e Combos.")
         return
 
     try:
         from src.services.inventory_analysis import InventoryDataService
         from src.services.ai_agent import ZarAIAgent
         
-        await update.message.reply_text("Buscando o maior capital imobilizado para caça aos 'Micos' (Dead Stock) e Combos... 💸")
+        await reply_zar(update, context, "Buscando o maior capital imobilizado para caça aos 'Micos' (Dead Stock) e Combos... 💸")
         
         db_service = InventoryDataService()
         data = db_service.get_highest_stock_items()
@@ -412,15 +426,15 @@ async def cmd_micos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report = agent.analyze_inventory_health(data)
         
         for chunk in chunk_message(report):
-            await update.message.reply_text(chunk, parse_mode="HTML")
+            await reply_zar(update, context, chunk, parse_mode="HTML")
             
     except Exception as e:
-        await update.message.reply_text(f"Erro fatal em micos: {str(e)[:500]}")
+        await reply_zar(update, context, f"Erro fatal em micos: {str(e)[:500]}")
 
 async def cmd_pendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not auth:
-        await update.message.reply_text("⛔ Faça login para consultar pendências.")
+        await reply_zar(update, context, "⛔ Faça login para consultar pendências.")
         return
 
     try:
@@ -434,34 +448,34 @@ async def cmd_pendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if len(auth_brands) == 1:
                     brand = auth_brands[0]
                 else:
-                    await update.message.reply_text(f"⚠️ Você representa múltiplas marcas: {auth['brand']}\nPor favor, informe a fábrica para investigar a logística. Ex: /pendencias {auth_brands[0]}")
+                    await reply_zar(update, context, f"⚠️ Você representa múltiplas marcas: {auth['brand']}\nPor favor, informe a fábrica para investigar a logística. Ex: /pendencias {auth_brands[0]}")
                     return
             else:
                 brand = " ".join(args)
                 if not is_supplier(auth, brand):
-                    await update.message.reply_text(f"🔒 Acesso Fornecedor: Você não possui a marca '{brand}'. Suas marcas: {auth['brand']}")
+                    await reply_zar(update, context, f"🔒 Acesso Fornecedor: Você não possui a marca '{brand}'. Suas marcas: {auth['brand']}")
                     return
         else:
             if not args:
-                await update.message.reply_text("⚠️ Por favor, informe a fábrica. Exemplo: /pendencias Altenburg")
+                await reply_zar(update, context, "⚠️ Por favor, informe a fábrica. Exemplo: /pendencias Altenburg")
                 return
             brand = " ".join(args)
         
         # 1. Ache o fornecedor
         r = supabase.table('suppliers').select('id, name').ilike('name', f"%{brand[:10]}%").execute()
         if not r.data:
-            await update.message.reply_text(f"❌ Não encontrei fornecedor contendo '{brand}'.")
+            await reply_zar(update, context, f"❌ Não encontrei fornecedor contendo '{brand}'.")
             return
             
         sup_id = r.data[0]['id']
         sup_name = r.data[0]['name']
         
-        await update.message.reply_text(f"Investigando entregas fracionadas da {sup_name}... 🔎")
+        await reply_zar(update, context, f"Investigando entregas fracionadas da {sup_name}... 🔎")
         
         # 2. Ache ordens PENDING ou PARTIAL
         o_resp = supabase.table('purchase_orders').select('id, order_date, status').eq('supplier_id', sup_id).in_('status', ['PENDING', 'PARTIAL']).execute()
         if not o_resp.data:
-            await update.message.reply_text(f"✅ O fornecedor {sup_name} não tem nenhum pedido pendente! Entregas 100% liquidadas.")
+            await reply_zar(update, context, f"✅ O fornecedor {sup_name} não tem nenhum pedido pendente! Entregas 100% liquidadas.")
             return
             
         # 3. Ache itens dessas ordens
@@ -481,7 +495,7 @@ async def cmd_pendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
                 
         if not missing_items:
-            await update.message.reply_text(f"✅ Pedidos encontrados, mas a matemática fechou. Nada pendente para {sup_name}.")
+            await reply_zar(update, context, f"✅ Pedidos encontrados, mas a matemática fechou. Nada pendente para {sup_name}.")
             return
             
         # 5. Formatar reposta
@@ -495,15 +509,15 @@ async def cmd_pendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"\n💰 Valor Total Preso em Trânsito: R$ {total_missing:,.2f}"
         
         for chunk in chunk_message(msg):
-            await update.message.reply_text(chunk, parse_mode="Markdown")
+            await reply_zar(update, context, chunk, parse_mode="Markdown")
             
     except Exception as e:
-        await update.message.reply_text(f"Erro fatal em pendencias: {str(e)[:500]}")
+        await reply_zar(update, context, f"Erro fatal em pendencias: {str(e)[:500]}")
 
 async def cmd_negociar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Negado: Informações de Preços e Margens de Lucro são restritas à diretoria.")
+        await reply_zar(update, context, "⛔ Acesso Negado: Informações de Preços e Margens de Lucro são restritas à diretoria.")
         return
 
     try:
@@ -511,7 +525,7 @@ async def cmd_negociar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         args = context.args
         if len(args) < 3:
-            await update.message.reply_text(
+            await reply_zar(update, context, 
                 "⚠️ Uso correto: /negociar [custo_proposto] [preço_venda_atual] [margem_ideal_%]\n"
                 "Exemplo: /negociar 45.50 89.90 40"
             )
@@ -522,10 +536,10 @@ async def cmd_negociar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             selling_price = float(args[1].replace(',', '.'))
             current_margin = float(args[2].replace(',', '.'))
         except ValueError:
-            await update.message.reply_text("❌ Valores numéricos inválidos. Use apenas números e ponto ou vírgula.")
+            await reply_zar(update, context, "❌ Valores numéricos inválidos. Use apenas números e ponto ou vírgula.")
             return
 
-        await update.message.reply_text("🤖 ZAR analisando a viabilidade desta negociação ao vivo...")
+        await reply_zar(update, context, "🤖 ZAR analisando a viabilidade desta negociação ao vivo...")
         
         agent = ZarAIAgent()
         report = agent.analyze_negotiation(
@@ -535,15 +549,15 @@ async def cmd_negociar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         for chunk in chunk_message(report):
-            await update.message.reply_text(chunk, parse_mode="HTML")
+            await reply_zar(update, context, chunk, parse_mode="HTML")
             
     except Exception as e:
-        await update.message.reply_text(f"Erro fatal em negociar: {str(e)[:500]}")
+        await reply_zar(update, context, f"Erro fatal em negociar: {str(e)[:500]}")
 
 async def cmd_comprar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Alertas de quebra de estoque e compras são ferramentas da diretoria.")
+        await reply_zar(update, context, "⛔ Alertas de quebra de estoque e compras são ferramentas da diretoria.")
         return
 
     try:
@@ -553,30 +567,30 @@ async def cmd_comprar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args
         brandFilter = " ".join(args) if args else "Geral"
         
-        await update.message.reply_text(f"Mapeando produtos {brandFilter} em estado crítico de estoque... 📉")
+        await reply_zar(update, context, f"Mapeando produtos {brandFilter} em estado crítico de estoque... 📉")
         
         db_service = InventoryDataService()
         data = db_service.get_low_stock_items(brandFilter if brandFilter != "Geral" else None)
         
         if not data:
-            await update.message.reply_text(f"✅ O estoque de '{brandFilter}' está saudável. Nenhum item com giro alto e estoque baixo encontrado.")
+            await reply_zar(update, context, f"✅ O estoque de '{brandFilter}' está saudável. Nenhum item com giro alto e estoque baixo encontrado.")
             return
             
-        await update.message.reply_text(f"🚨 Encontrei {len(data)} itens críticos! ZAR elaborando sugestão de pedido de compras...")
+        await reply_zar(update, context, f"🚨 Encontrei {len(data)} itens críticos! ZAR elaborando sugestão de pedido de compras...")
         
         agent = ZarAIAgent()
         report = agent.analyze_purchase_recommendations(data, brandFilter)
         
         for chunk in chunk_message(report):
-            await update.message.reply_text(chunk, parse_mode="HTML")
+            await reply_zar(update, context, chunk, parse_mode="HTML")
             
     except Exception as e:
-        await update.message.reply_text(f"Erro fatal em alertar compras: {str(e)[:500]}")
+        await reply_zar(update, context, f"Erro fatal em alertar compras: {str(e)[:500]}")
 
 async def cmd_comparar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Restrito: O comparador de preços e auto-canibalização pesquisa concorrentes (recurso da diretoria).")
+        await reply_zar(update, context, "⛔ Acesso Restrito: O comparador de preços e auto-canibalização pesquisa concorrentes (recurso da diretoria).")
         return
 
     try:
@@ -585,34 +599,34 @@ async def cmd_comparar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         args = context.args
         if not args:
-            await update.message.reply_text("⚠️ Informe o tipo de produto para comparar. Exemplo: /comparar travesseiro")
+            await reply_zar(update, context, "⚠️ Informe o tipo de produto para comparar. Exemplo: /comparar travesseiro")
             return
             
         keyword = " ".join(args)
-        await update.message.reply_text(f"Buscando produtos similares a '{keyword}' no estoque... 🔍")
+        await reply_zar(update, context, f"Buscando produtos similares a '{keyword}' no estoque... 🔍")
         
         db_service = InventoryDataService()
         data = db_service.compare_similar_products(keyword)
         
         if not data or len(data) < 2:
-            await update.message.reply_text(f"❌ Não encontrei produtos suficientes contendo '{keyword}' para uma comparação útil.")
+            await reply_zar(update, context, f"❌ Não encontrei produtos suficientes contendo '{keyword}' para uma comparação útil.")
             return
             
-        await update.message.reply_text(f"⚖️ Encontrei {len(data)} itens similares. Acionando ZAR para análise de concorrência e preços...")
+        await reply_zar(update, context, f"⚖️ Encontrei {len(data)} itens similares. Acionando ZAR para análise de concorrência e preços...")
         
         agent = ZarAIAgent()
         report = agent.analyze_product_comparison(data, keyword)
         
         for chunk in chunk_message(report):
-            await update.message.reply_text(chunk, parse_mode="HTML")
+            await reply_zar(update, context, chunk, parse_mode="HTML")
             
     except Exception as e:
-        await update.message.reply_text(f"Erro fatal em comparar: {str(e)[:500]}")
+        await reply_zar(update, context, f"Erro fatal em comparar: {str(e)[:500]}")
 
 async def cmd_cotar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Apenas o Gestor de Compras pode gerar Pitch de Negociação Automático.")
+        await reply_zar(update, context, "⛔ Apenas o Gestor de Compras pode gerar Pitch de Negociação Automático.")
         return
 
     try:
@@ -621,34 +635,34 @@ async def cmd_cotar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         args = context.args
         if not args:
-            await update.message.reply_text("⚠️ Informe a marca/fornecedor para gerar o pitch comercial. Exemplo: /cotar Altenburg")
+            await reply_zar(update, context, "⚠️ Informe a marca/fornecedor para gerar o pitch comercial. Exemplo: /cotar Altenburg")
             return
             
         brand = " ".join(args)
-        await update.message.reply_text(f"Mapeando itens de alto giro de '{brand}'... 📊")
+        await reply_zar(update, context, f"Mapeando itens de alto giro de '{brand}'... 📊")
         
         db_service = InventoryDataService()
         data = db_service.get_supplier_opportunities(brand)
         
         if not data:
-            await update.message.reply_text(f"❌ Não encontrei produtos de alto giro com estoque baixo da '{brand}'. O estoque pode estar cheio.")
+            await reply_zar(update, context, f"❌ Não encontrei produtos de alto giro com estoque baixo da '{brand}'. O estoque pode estar cheio.")
             return
             
-        await update.message.reply_text(f"✅ Encontrei {len(data)} itens com giro rápido. ZAR escrevendo a mensagem de negociação em lote...")
+        await reply_zar(update, context, f"✅ Encontrei {len(data)} itens com giro rápido. ZAR escrevendo a mensagem de negociação em lote...")
         
         agent = ZarAIAgent()
         report = agent.generate_supplier_pitch(data, brand)
         
         for chunk in chunk_message(report):
-            await update.message.reply_text(chunk, parse_mode="HTML")
+            await reply_zar(update, context, chunk, parse_mode="HTML")
             
     except Exception as e:
-        await update.message.reply_text(f"Erro fatal em cotar: {str(e)[:500]}")
+        await reply_zar(update, context, f"Erro fatal em cotar: {str(e)[:500]}")
 
 async def cmd_caixa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Negado: Visão de contas a pagar e desembolsos restrito.")
+        await reply_zar(update, context, "⛔ Acesso Negado: Visão de contas a pagar e desembolsos restrito.")
         return
 
     try:
@@ -656,14 +670,14 @@ async def cmd_caixa(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from src.db.supabase_client import get_supabase_client
         from datetime import datetime
         
-        await update.message.reply_text("💸 Analisando Faturas e Projetando Desembolsos do Caixa... ⏳")
+        await reply_zar(update, context, "💸 Analisando Faturas e Projetando Desembolsos do Caixa... ⏳")
         
         supabase = get_supabase_client()
         # Busca faturas pendentes da tabela
         resp = supabase.table('accounts_payable').select('id, invoice_id, due_date, amount, status').eq('status', 'PENDING').execute()
         
         if not resp.data:
-            await update.message.reply_text("🎉 Não há boletos abertos extraídos no momento! Você está em dia.")
+            await reply_zar(update, context, "🎉 Não há boletos abertos extraídos no momento! Você está em dia.")
             return
             
         # Puxa relacionamento para saber quem cobrar/pagar (NF > Order > Supplier)
@@ -693,16 +707,16 @@ async def cmd_caixa(update: Update, context: ContextTypes.DEFAULT_TYPE):
         analysis = agent.analyze_cash_flow(boletos_recentes)
         
         for chunk in chunk_message(analysis):
-            await update.message.reply_text(chunk)
+            await reply_zar(update, context, chunk)
             
     except Exception as e:
         logger.error(f"Erro fatal em caixa: {e}")
-        await update.message.reply_text(f"O ZAR Financeiro acusou pane ao ler as contas: {str(e)[:500]}")
+        await reply_zar(update, context, f"O ZAR Financeiro acusou pane ao ler as contas: {str(e)[:500]}")
 
 async def cmd_giro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not auth:
-        await update.message.reply_text("⛔ Faça login para acessar o sistema de Giro de Estoque.")
+        await reply_zar(update, context, "⛔ Faça login para acessar o sistema de Giro de Estoque.")
         return
 
     try:
@@ -716,42 +730,42 @@ async def cmd_giro(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if len(auth_brands) == 1:
                     brand = auth_brands[0]
                 else:
-                    await update.message.reply_text(f"⚠️ Você representa múltiplas marcas: {auth['brand']}\nPor favor, digite qual deseja analisar. Ex: /giro {auth_brands[0]}")
+                    await reply_zar(update, context, f"⚠️ Você representa múltiplas marcas: {auth['brand']}\nPor favor, digite qual deseja analisar. Ex: /giro {auth_brands[0]}")
                     return
             else:
                 brand = " ".join(args)
                 if not is_supplier(auth, brand):
-                    await update.message.reply_text(f"🔒 Acesso Fornecedor: Redirecionamento negado para '{brand}'. Suas marcas: {auth['brand']}")
+                    await reply_zar(update, context, f"🔒 Acesso Fornecedor: Redirecionamento negado para '{brand}'. Suas marcas: {auth['brand']}")
                     return
         else:
             if not args:
-                await update.message.reply_text("🔎 Uso correto: /giro [Nome da Marca]")
+                await reply_zar(update, context, "🔎 Uso correto: /giro [Nome da Marca]")
                 return
             brand = " ".join(args)
             
-        await update.message.reply_text(f"⚙️ Analisando velocidade de vendas e calculando dias de cobertura para: {brand}... ⏳")
+        await reply_zar(update, context, f"⚙️ Analisando velocidade de vendas e calculando dias de cobertura para: {brand}... ⏳")
         
         db_service = InventoryDataService()
         turnover_data = db_service.analyze_inventory_turnover(brand)
         
         if not turnover_data:
-            await update.message.reply_text("📉 Ainda não temos dias suficientes de histórico (Snapshots Diários) registrados para achar o padrão matemático de vendas dessa marca.")
+            await reply_zar(update, context, "📉 Ainda não temos dias suficientes de histórico (Snapshots Diários) registrados para achar o padrão matemático de vendas dessa marca.")
             return
             
         agent = ZarAIAgent()
         analysis = agent.analyze_turnover(turnover_data, brand)
         
         for chunk in chunk_message(analysis):
-            await update.message.reply_text(chunk)
+            await reply_zar(update, context, chunk)
             
     except Exception as e:
         logger.error(f"Erro em cmd_giro: {e}")
-        await update.message.reply_text(f"Erro fatal em giro: {str(e)[:500]}")
+        await reply_zar(update, context, f"Erro fatal em giro: {str(e)[:500]}")
 
 async def cmd_reprecificar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria pode alterar a política de preços de prateleira baseada em inflação.")
+        await reply_zar(update, context, "⛔ Acesso Restrito: Apenas a diretoria pode alterar a política de preços de prateleira baseada em inflação.")
         return
 
     try:
@@ -760,33 +774,33 @@ async def cmd_reprecificar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         args = context.args
         if not args:
-            await update.message.reply_text("⚠️ Informe a fábrica para buscar distorções de inflação. Ex: /reprecificar Altenburg")
+            await reply_zar(update, context, "⚠️ Informe a fábrica para buscar distorções de inflação. Ex: /reprecificar Altenburg")
             return
             
         brand = " ".join(args)
-        await update.message.reply_text(f"📉 Auditando as últimas Notas Fiscais da {brand} contra nosso Custo Base Atual... ⏳")
+        await reply_zar(update, context, f"📉 Auditando as últimas Notas Fiscais da {brand} contra nosso Custo Base Atual... ⏳")
         
         db_service = InventoryDataService()
         repricing_data = db_service.get_repricing_opportunities(brand)
         
         if not repricing_data:
-            await update.message.reply_text("✅ Boas notícias! Cruzando o banco de dados NFe vs Estoque, não foi detectada nenhuma inflação no custo de reposição dos produtos da fábrica. Remarcação de preços desnecessária.")
+            await reply_zar(update, context, "✅ Boas notícias! Cruzando o banco de dados NFe vs Estoque, não foi detectada nenhuma inflação no custo de reposição dos produtos da fábrica. Remarcação de preços desnecessária.")
             return
             
         agent = ZarAIAgent()
         analysis = agent.analyze_repricing(repricing_data, brand)
         
         for chunk in chunk_message(analysis):
-            await update.message.reply_text(chunk)
+            await reply_zar(update, context, chunk)
             
     except Exception as e:
         logger.error(f"Erro na reprecificação: {e}")
-        await update.message.reply_text(f"Falha ao gerar etiquetas de preços novos: {str(e)[:500]}")
+        await reply_zar(update, context, f"Falha ao gerar etiquetas de preços novos: {str(e)[:500]}")
 
 async def cmd_chargeback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria pode emitir termos de cobrança legal e logísticos (Chargebacks).")
+        await reply_zar(update, context, "⛔ Acesso Restrito: Apenas a diretoria pode emitir termos de cobrança legal e logísticos (Chargebacks).")
         return
 
     try:
@@ -794,11 +808,11 @@ async def cmd_chargeback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         args = context.args
         if not args:
-            await update.message.reply_text("⚠️ Informe o número da Nota Fiscal alvo da quebra de pedido. Ex: /chargeback 123456")
+            await reply_zar(update, context, "⚠️ Informe o número da Nota Fiscal alvo da quebra de pedido. Ex: /chargeback 123456")
             return
             
         nf_num = str(args[0])
-        await update.message.reply_text(f"⚖️ ZAR Jurídico Logístico: Levantando faltantes e avarias da NFe {nf_num} para emissão da carta de protesto... ⏳")
+        await reply_zar(update, context, f"⚖️ ZAR Jurídico Logístico: Levantando faltantes e avarias da NFe {nf_num} para emissão da carta de protesto... ⏳")
         
         # Para efeito do teste, passamos uma anomalia simulada. Em perfomance real, ele leria da tabela `audits`.
         divergences = "Faltam 5 Itens do SKU 'Jogo de Cama Casal' listados no pedido.\nAvaria reportada pelo galpão em 2 'Travesseiros'."
@@ -807,16 +821,16 @@ async def cmd_chargeback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         analysis = agent.generate_chargeback(nf_num, divergences)
         
         for chunk in chunk_message(analysis):
-            await update.message.reply_text(chunk)
+            await reply_zar(update, context, chunk)
             
     except Exception as e:
         logger.error(f"Erro no chargeback: {e}")
-        await update.message.reply_text(f"Falha no módulo de faturamento logístico: {str(e)[:500]}")
+        await reply_zar(update, context, f"Falha no módulo de faturamento logístico: {str(e)[:500]}")
 
 async def cmd_docas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Restrito: Portal de agendamento de transporte exclusivo do galpão.")
+        await reply_zar(update, context, "⛔ Acesso Restrito: Portal de agendamento de transporte exclusivo do galpão.")
         return
 
     try:
@@ -826,34 +840,34 @@ async def cmd_docas(update: Update, context: ContextTypes.DEFAULT_TYPE):
             from datetime import datetime
             hoje = datetime.now().strftime("%d/%m/%Y")
             msg = f"🚚 **Portal de Docas (Painel: {hoje})**\n\n🟢 Nenhuma transportadora ou carreta agendada para recebimento na doca principal hoje.\n\nPara alocar uma janela de carga digite: `/docas [Transportadora] [Data/Hora]`"
-            await update.message.reply_text(msg, parse_mode='Markdown')
+            await reply_zar(update, context, msg, parse_mode='Markdown')
             return
             
         transp = " ".join(args)
-        await update.message.reply_text(f"✅ Slot de agendamento de Descarregamento confirmado em sistema para: {transp}")
+        await reply_zar(update, context, f"✅ Slot de agendamento de Descarregamento confirmado em sistema para: {transp}")
     except Exception as e:
         logger.error(f"Erro em docas: {e}")
 
 async def cmd_tagplus(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria pode acessar o ERP TagPlus.")
+        await reply_zar(update, context, "⛔ Acesso Restrito: Apenas a diretoria pode acessar o ERP TagPlus.")
         return
 
     from src.services.tagplus_api import TagPlusAPI
     
-    await update.message.reply_text("📡 Conectando ao ERP TagPlus e buscando produtos...")
+    await reply_zar(update, context, "📡 Conectando ao ERP TagPlus e buscando produtos...")
     
     try:
         api = TagPlusAPI()
         products = api.get_products()
         
         if products is None:
-            await update.message.reply_text("❌ Erro ao conectar com a TagPlus.")
+            await reply_zar(update, context, "❌ Erro ao conectar com a TagPlus.")
             return
             
         if not products:
-            await update.message.reply_text("Nenhum produto encontrado na base da TagPlus.")
+            await reply_zar(update, context, "Nenhum produto encontrado na base da TagPlus.")
             return
             
         msg = f"📦 *Produtos encontrados na TagPlus ({len(products)}):*\n\n"
@@ -863,43 +877,43 @@ async def cmd_tagplus(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"• *{desc}* | Venda: R$ {preco}\n"
             
         for chunk in chunk_message(msg):
-            await update.message.reply_text(chunk, parse_mode="Markdown")
+            await reply_zar(update, context, chunk, parse_mode="Markdown")
             
     except Exception as e:
         logger.error(f"Erro no TagPlus: {e}")
-        await update.message.reply_text(f"Ocorreu um erro ao listar produtos da TagPlus: {str(e)[:500]}")
+        await reply_zar(update, context, f"Ocorreu um erro ao listar produtos da TagPlus: {str(e)[:500]}")
 
 async def cmd_sync_tagplus(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria pode forçar sincronização massiva do ERP nas nuvens da IA.")
+        await reply_zar(update, context, "⛔ Acesso Restrito: Apenas a diretoria pode forçar sincronização massiva do ERP nas nuvens da IA.")
         return
 
     from src.services.tagplus_sync import TagPlusSyncService
     
-    await update.message.reply_text("🔄 Desativando o motor Excel antigo e ativando ponte de dados direta com ERP TagPlus... Isso pode demorar se você tiver milhares de itens.")
+    await reply_zar(update, context, "🔄 Desativando o motor Excel antigo e ativando ponte de dados direta com ERP TagPlus... Isso pode demorar se você tiver milhares de itens.")
     
     try:
         sync_service = TagPlusSyncService()
         success, message = sync_service.sync_inventory()
         
         if success:
-            await update.message.reply_text(message, parse_mode="Markdown")
-            await update.message.reply_text("🎉 Seu banco de dados da IA agora reflete o exato segundo em que estamos. Você pode testar comandos como `/micos` que a IA beberá dessa nova fonte imediata!")
+            await reply_zar(update, context, message, parse_mode="Markdown")
+            await reply_zar(update, context, "🎉 Seu banco de dados da IA agora reflete o exato segundo em que estamos. Você pode testar comandos como `/micos` que a IA beberá dessa nova fonte imediata!")
         else:
-            await update.message.reply_text(str(message))
+            await reply_zar(update, context, str(message))
             
     except Exception as e:
         logger.error(f"Erro no Sincronizador: {e}")
-        await update.message.reply_text(f"Ocorreu um curto-circuito ao gravar dados TagPlus no banco neural: {str(e)[:500]}")
+        await reply_zar(update, context, f"Ocorreu um curto-circuito ao gravar dados TagPlus no banco neural: {str(e)[:500]}")
 
 async def cmd_testar_alertas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not is_admin(auth):
-        await update.message.reply_text("⛔ Acesso Restrito: Apenas a diretoria testa os Pushes Diários.")
+        await reply_zar(update, context, "⛔ Acesso Restrito: Apenas a diretoria testa os Pushes Diários.")
         return
         
-    await update.message.reply_text("⏩ Acelerando o tempo para 08:00 AM... Forçando ZAR a processar Anomalias em Background. Aguarde a mensagem autônoma...")
+    await reply_zar(update, context, "⏩ Acelerando o tempo para 08:00 AM... Forçando ZAR a processar Anomalias em Background. Aguarde a mensagem autônoma...")
     
     from src.services.scheduler import run_morning_alerts
     await run_morning_alerts(context)
@@ -941,41 +955,17 @@ async def route_intent(text: str, update: Update, context: ContextTypes.DEFAULT_
                 
             context.args = fake_args
             
-            await update.message.reply_text(f"🧠 *ZAR NLP:* Identifiquei seu desejo de `/{intent}`. Ativando engrenagens operacionais...", parse_mode='Markdown')
+            await reply_zar(update, context, f"🧠 *ZAR NLP:* Identifiquei seu desejo de `/{intent}`. Ativando engrenagens operacionais...", parse_mode='Markdown')
             
             target_cmd = command_map[intent]
             
-            # --- ZAR VOICE ENGINE: MONKEY PATCHING ---
-            # Se o usuário enviou uma mensagem de áudio, a ZAR DEVE responder em áudio!
-            if context.user_data.get("reply_as_voice"):
-                original_reply_text = update.message.reply_text
-                import types
-                
-                async def augmented_voice_reply(*args, **kwargs):
-                    # 1. Envia o texto limpo para o chefe poder ler se preferir
-                    msg_text = args[0] if args else kwargs.get('text', '')
-                    await original_reply_text(*args, **kwargs)
-                    
-                    # 2. Sintetiza a voz no background e dispara o Player de Áudio Oficial do Telegram
-                    try:
-                        from src.services.tts_service import ZarVoiceService
-                        tts = ZarVoiceService()
-                        audio_stream = await tts.generate_speech(msg_text)
-                        if audio_stream:
-                            await update.message.reply_voice(voice=audio_stream)
-                    except Exception as tts_e:
-                        logger.error(f"Erro TTS Motor: {tts_e}")
-                        
-                update.message.reply_text = types.MethodType(augmented_voice_reply, update.message)
-            # ------------------------------------------
-
             await target_cmd(update, context)
         else:
-            await update.message.reply_text("🤖 Desculpe, não encontrei uma função comercial para isso. Minha especialidade é auditoria de estoque em Supply Chain corporativo. Pode ser mais direto?")
+            await reply_zar(update, context, "🤖 Desculpe, não encontrei uma função comercial para isso. Minha especialidade é auditoria de estoque em Supply Chain corporativo. Pode ser mais direto?")
             
     except Exception as e:
         logger.error(f"Erro Cérebro NLP: {e}")
-        await update.message.reply_text("Tive um curto-circuito na minha rede neural tentando ler a intenção da sua fala.")
+        await reply_zar(update, context, "Tive um curto-circuito na minha rede neural tentando ler a intenção da sua fala.")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -985,7 +975,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     auth = await get_user_auth(update.effective_user.id)
     if not auth:
-        await update.message.reply_text("⛔ Faça login antes de conversar comigo.\nEx: /sou_fornecedor [Sua Marca] ou /admin [Senha]")
+        await reply_zar(update, context, "⛔ Faça login antes de conversar comigo.\nEx: /sou_fornecedor [Sua Marca] ou /admin [Senha]")
         return
         
     await update.message.reply_chat_action(action="typing")
@@ -994,7 +984,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth = await get_user_auth(update.effective_user.id)
     if not auth:
-        await update.message.reply_text("⛔ Faça login antes de usar os comandos de voz.")
+        await reply_zar(update, context, "⛔ Faça login antes de usar os comandos de voz.")
         return
         
     await update.message.reply_chat_action(action="record_voice")
@@ -1018,10 +1008,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(file_path)
             
         if not transcription:
-            await update.message.reply_text("Desculpe, a IA teve dificuldade acústica em transcrever a frase perfeitamente.")
+            await reply_zar(update, context, "Desculpe, a IA teve dificuldade acústica em transcrever a frase perfeitamente.")
             return
             
-        await update.message.reply_text(f"🗣️ *Transcrição de Áudio:* _{transcription}_", parse_mode="Markdown")
+        await reply_zar(update, context, f"🗣️ *Transcrição de Áudio:* _{transcription}_", parse_mode="Markdown")
         await update.message.reply_chat_action(action="typing")
         
         # Redirecionando texto limpo extraído do áudio para funil cerebral padrão
@@ -1031,4 +1021,4 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     except Exception as e:
         logger.error(f"Erro no processamento de voz: {e}")
-        await update.message.reply_text(f"Erro ao processar as ondas de áudio e extração verbal. {str(e)[:500]}")
+        await reply_zar(update, context, f"Erro ao processar as ondas de áudio e extração verbal. {str(e)[:500]}")
