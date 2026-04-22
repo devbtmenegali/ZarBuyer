@@ -1,7 +1,10 @@
-python-telegram-bot>=20.0
-supabase
+fastapi
+uvicorn
 pandas
 openpyxl
-google-genai
+python-telegram-bot
+supabase
 python-dotenv
+asyncio
 openai
+google-genai
