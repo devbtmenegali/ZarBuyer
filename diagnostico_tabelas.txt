@@ -1,0 +1,292 @@
+=== MAPA DE DADOS DO ERP (DIAGNÓSTICO ZAR) ===
+
+TABELA: MERCADORIA_CAD
+  Status: OK. (Possui 95 colunas internas vindas do ERP)
+  Campos Encontrados:
+    - cmv (str): Exemplo -> 47.42000
+    - mva (str): Exemplo -> 0.00
+    - peso (str): Exemplo -> 0.0
+    - fk_pn (str): Exemplo -> 10000110226
+    - altura (str): Exemplo -> 0.00000
+    - ex_ncm (str): Exemplo -> 0
+    - saldo1 (str): Exemplo -> 0.0
+    - saldo2 (str): Exemplo -> 0.0
+    - saldo3 (str): Exemplo -> 0.0
+    - volume (str): Exemplo -> 0.00000
+    - hashmd5 (str): Exemplo -> 
+    - largura (str): Exemplo -> 0.00000
+    - unidade (str): Exemplo -> JG
+    - comissao (str): Exemplo -> 0.0
+    - promocao (str): Exemplo -> 0
+    - voltagem (str): Exemplo -> 0
+    - aplicacao (str): Exemplo -> 
+    - cod_grupo (str): Exemplo -> 1
+    - cod_marca (str): Exemplo -> 6
+    - descricao (str): Exemplo -> JOGO CAMA KING BASIC ROLINHO EST.DENIS B
+    - codigo_ean (str): Exemplo -> 00000000022130
+    - codigo_ncm (str): Exemplo -> 63021000
+    - desmontada (str): Exemplo -> 0
+    - observacao (str): Exemplo -> 
+    - referencia (str): Exemplo -> 43832
+    - base_st_ret (str): Exemplo -> 0.00000
+    - cod_colecao (str): Exemplo -> 1
+    - cod_usuario (str): Exemplo -> 11
+    - codigo_cest (str): Exemplo -> 2806100
+    - comprimento (str): Exemplo -> 0.00000
+    - localizacao (str): Exemplo -> 
+    - possui_meta (str): Exemplo -> 0
+    - preco_caixa (str): Exemplo -> 0.0
+    - preco_custo (str): Exemplo -> 52.25
+    - aliquota_ipi (str): Exemplo -> 0.0
+    - fracao_caixa (str): Exemplo -> 0.0
+    - grade_padrao (str): Exemplo -> 0
+    - valor_st_ret (str): Exemplo -> 0.00000
+    - aliquota_icms (str): Exemplo -> 17.00
+    - base_reduzida (str): Exemplo -> 100.00
+    - fora_de_linha (str): Exemplo -> 0
+    - tempo_entrega (str): Exemplo -> 0
+    - tipo_producao (str): Exemplo -> 1
+    - cod_fabricante (str): Exemplo -> 43832
+    - cod_mercadoria (str): Exemplo -> 22130
+    - estoque_financ (str): Exemplo -> 0.0
+    - estoque_minimo (str): Exemplo -> 0.0
+    - flag_alteracao (str): Exemplo -> 0
+    - metro_quadrado (str): Exemplo -> 0.00000
+    - peso_embalagem (str): Exemplo -> 0.0
+    - preco_anterior (str): Exemplo -> 0.0
+    - classif__fiscal (str): Exemplo -> 0
+    - colecao_estacao (str): Exemplo -> 
+    - quant_min_venda (str): Exemplo -> 0.0
+    - carga_trib_media (str): Exemplo -> 30.45
+    - cod_centro_custo (str): Exemplo -> 1
+    - data_atualizacao (str): Exemplo -> 82267
+    - data_do_cadastro (str): Exemplo -> 82266
+    - preco_custo_real (str): Exemplo -> 52.25
+    - tipo_de_material (str): Exemplo -> 
+    - ult_quant_compra (str): Exemplo -> 3.0
+    - valor_outras_ipi (str): Exemplo -> 0.00
+    - bloquear_decimais (str): Exemplo -> 0
+    - data_ultima_venda (str): Exemplo -> 0
+    - desconto_montagem (str): Exemplo -> 0.00000
+    - obrigar_obs_venda (str): Exemplo -> 0
+    - pontuacao_entrega (str): Exemplo -> 0.00
+    - preco_custo_medio (str): Exemplo -> 0.0
+    - valor_outras_icms (str): Exemplo -> 0.00
+    - data_ultima_compra (str): Exemplo -> 82267
+    - descricao_completa (str): Exemplo -> 
+    - pontuacao_montagem (str): Exemplo -> 0.00
+    - preco_venda_varejo (str): Exemplo -> 119.9
+    - ultimo_preco_custo (str): Exemplo -> 0.0
+    - vender_sem_estoque (str): Exemplo -> 0
+    - margem_bruta_varejo (str): Exemplo -> 0.00
+    - margem_minima_lucro (str): Exemplo -> 0.00
+    - nao_vender_separado (str): Exemplo -> 0
+    - percentual_de_lucro (str): Exemplo -> 129.47
+    - preco_venda_atacado (str): Exemplo -> 0.0
+    - ultimo_preco_varejo (str): Exemplo -> 119.9
+    - arredondado_truncado (str): Exemplo -> 1
+    - data_ultimo_reajuste (str): Exemplo -> 0
+    - margem_bruta_atacado (str): Exemplo -> 0.00
+    - status_da_mercadoria (str): Exemplo -> 1
+    - ultimo_preco_atacado (str): Exemplo -> 0.0
+    - altera_prec_uni_venda (str): Exemplo -> 0
+    - margem_liquida_varejo (str): Exemplo -> 0.00
+    - aliquota_ipi_presumido (str): Exemplo -> 0.00
+    - desconto_na_mercadoria (str): Exemplo -> 0.00000
+    - margem_liquida_atacado (str): Exemplo -> 0.00
+    - vigencia_desconto_final (str): Exemplo -> 0
+    - ind_reducao_base_calculo (str): Exemplo -> 0
+    - vigencia_desconto_inicial (str): Exemplo -> 0
+    - percentual_frete_presumido (str): Exemplo -> 0.00
+--------------------------------------------------
+
+TABELA: PV_MOVTO
+  Status: OK. (Possui 42 colunas internas vindas do ERP)
+  Campos Encontrados:
+    - id_kit (str): Exemplo -> 0
+    - cod_cor (str): Exemplo -> 1627
+    - cod_kit (str): Exemplo -> 0
+    - hashmd5 (str): Exemplo -> 1e4a101365b9684c9a2070cf2f818762
+    - seq_kit (str): Exemplo -> 0
+    - tamanho (str): Exemplo -> 1
+    - unidade (str): Exemplo -> PT
+    - cod_rota (str): Exemplo -> 0
+    - descricao (str): Exemplo -> PORTA TRAVESSEIRO MESCLA CINZA 2PC
+    - sequencia (str): Exemplo -> 4
+    - desmontada (str): Exemplo -> 1
+    - hora_final (str): Exemplo -> 1
+    - observacao (str): Exemplo -> 
+    - quantidade (str): Exemplo -> 1.0
+    - cod_cliente (str): Exemplo -> 0
+    - cod_empresa (str): Exemplo -> 1
+    - emp_entrega (str): Exemplo -> 0
+    - preco_total (str): Exemplo -> 89.9
+    - cod_vendedor (str): Exemplo -> 160
+    - hora_inicial (str): Exemplo -> 1
+    - merc_amostra (str): Exemplo -> 0
+    - tipo_entrega (str): Exemplo -> 2
+    - data_inclusao (str): Exemplo -> 82291
+    - data_promessa (str): Exemplo -> 2026-04-18 12:34:14.380000
+    - tempo_entrega (str): Exemplo -> 0
+    - cod_mercadoria (str): Exemplo -> 20989
+    - deixar_na_loja (str): Exemplo -> 0
+    - desconto_valor (str): Exemplo -> 0.0
+    - flag_alteracao (str): Exemplo -> 0
+    - num_sequencial (str): Exemplo -> 30920
+    - preco_unitario (str): Exemplo -> 89.9
+    - acrescimo_valor (str): Exemplo -> 0.0
+    - cod_totalizador (str): Exemplo -> N1
+    - entregar_na_data (str): Exemplo -> 0
+    - ind_cancelamento (str): Exemplo -> 0
+    - numero_do_pedido (str): Exemplo -> 30922
+    - quantidade_minima (str): Exemplo -> 0.0
+    - produto_ou_servico (str): Exemplo -> 0
+    - cod_empresa_cliente (str): Exemplo -> 0
+    - desconto_mercadoria (str): Exemplo -> 0.0
+    - desconto_percentual (str): Exemplo -> 0.0
+    - acrescimo_percentual (str): Exemplo -> 0.0
+--------------------------------------------------
+
+TABELA: MARCAS
+  Status: OK. (Possui 4 colunas internas vindas do ERP)
+  Campos Encontrados:
+    - comissao (str): Exemplo -> 0.0
+    - cod_marca (str): Exemplo -> 1
+    - descricao (str): Exemplo -> ALTENBURG
+    - cod_usuario (str): Exemplo -> 7
+--------------------------------------------------
+
+TABELA: CLIENTES
+  Status: OK. (Possui 72 colunas internas vindas do ERP)
+  Campos Encontrados:
+    - cnae (NoneType): Exemplo -> None
+    - sexo (str): Exemplo -> 2
+    - email (str): Exemplo -> 
+    - status (str): Exemplo -> 0
+    - inativo (NoneType): Exemplo -> None
+    - codinome (str): Exemplo -> 
+    - cpf_cnpj (str): Exemplo -> 670.632.179-68
+    - filiacao (str): Exemplo -> 
+    - senha_web (NoneType): Exemplo -> None
+    - cod_regiao (str): Exemplo -> 2
+    - iss_retido (NoneType): Exemplo -> None
+    - cod_cliente (str): Exemplo -> 25016
+    - cod_empresa (str): Exemplo -> 1
+    - cod_usuario (str): Exemplo -> 6
+    - data_nascto (str): Exemplo -> 61851
+    - informar_ie (NoneType): Exemplo -> None
+    - referencias (str): Exemplo -> LOJAO STO ANTONIO 02/2022 ULTIMA 02/2005 13 COMPRAS VLR 659,00 MED. 19 DIAS
+LOJ...
+    - cadastro_spc (str): Exemplo -> 0
+    - emitir_carta (str): Exemplo -> 1
+    - estado_civil (str): Exemplo -> 2
+    - maior_atraso (str): Exemplo -> 0
+    - maior_compra (str): Exemplo -> 1138
+    - naturalidade (str): Exemplo -> PESCARIA BRAVA
+    - pre_cadastro (NoneType): Exemplo -> None
+    - tipo_cliente (str): Exemplo -> 1
+    - cod_profissao (NoneType): Exemplo -> None
+    - nome_fantasia (NoneType): Exemplo -> None
+    - renda_conjuge (str): Exemplo -> 0
+    - tempo_empresa (str): Exemplo -> 1
+    - ultima_compra (str): Exemplo -> 82295
+    - cliente_nummus (NoneType): Exemplo -> None
+    - numero_compras (str): Exemplo -> 1
+    - numero_do_aval (str): Exemplo -> 0
+    - media_de_atraso (str): Exemplo -> 0
+    - nome_do_conjuge (str): Exemplo -> 
+    - primeira_compra (str): Exemplo -> 82295
+    - vinculo_empresa (str): Exemplo -> 1
+    - autoriza_conjuge (str): Exemplo -> 0
+    - cargo_do_cliente (str): Exemplo -> DIARISTA
+    - cargo_do_conjuge (str): Exemplo -> 
+    - cod_escolaridade (str): Exemplo -> 1
+    - consumidor_final (str): Exemplo -> 1
+    - data_do_cadastro (str): Exemplo -> 82295
+    - filiacao_conjuge (str): Exemplo -> 
+    - ci_ctps_inscricao (str): Exemplo -> 
+    - contribuinte_icms (str): Exemplo -> 0
+    - documento_conjuge (str): Exemplo -> 
+    - fk_ramo_atividade (NoneType): Exemplo -> None
+    - limite_de_credito (str): Exemplo -> 0.0
+    - local_de_trabalho (str): Exemplo -> AUTONOMO E APOSENTADA
+    - nome_razao_social (str): Exemplo -> MARIA APARECIDA ACELINO DA SILVA
+    - nr_vezes_negativo (str): Exemplo -> 0
+    - renda_faturamento (str): Exemplo -> 0
+    - status_automatico (str): Exemplo -> F
+    - campo_configuravel (str): Exemplo -> 
+    - local_trab_conjuge (str): Exemplo -> 
+    - renda_complementar (NoneType): Exemplo -> None
+    - usa_preco_especial (NoneType): Exemplo -> None
+    - data_da_atualizacao (str): Exemplo -> 82295
+    - data_nascto_conjuge (str): Exemplo -> 0
+    - numero_de_quitacoes (str): Exemplo -> 0
+    - pessoas_autorizadas (str): Exemplo -> 
+    - soma_dias_atrasados (str): Exemplo -> 0
+    - cadastro_spc_conjuge (str): Exemplo -> 0
+    - tipo_preco_utilizado (NoneType): Exemplo -> None
+    - ultima_data_negativa (str): Exemplo -> 0
+    - ind_regime_tributario (NoneType): Exemplo -> None
+    - confirma_vinculo_empresa (str): Exemplo -> 1
+    - perc_acresc_cartao_relac (NoneType): Exemplo -> None
+    - data_atualizacao_cadastro (str): Exemplo -> 82295
+    - num_dias_tolerancia_avisos (NoneType): Exemplo -> None
+    - contribuinte_substituto_icms (NoneType): Exemplo -> None
+--------------------------------------------------
+
+TABELA: VENDEDOR
+  Status: OK. (Possui 16 colunas internas vindas do ERP)
+  Campos Encontrados:
+    - nome (str): Exemplo -> LOJA
+    - senha (NoneType): Exemplo -> None
+    - status (NoneType): Exemplo -> None
+    - salario (NoneType): Exemplo -> None
+    - cod_regiao (NoneType): Exemplo -> None
+    - cod_empresa (str): Exemplo -> 1
+    - cod_usuario (str): Exemplo -> 1
+    - cod_vendedor (str): Exemplo -> 1
+    - cod_centro_custo (NoneType): Exemplo -> None
+    - cod_plano_contas (NoneType): Exemplo -> None
+    - data_atualizacao (str): Exemplo -> 0
+    - comissao_instalacao (NoneType): Exemplo -> None
+    - comissao_mensalidade (NoneType): Exemplo -> None
+    - dt_inicio_atividades (NoneType): Exemplo -> None
+    - permitevendertodasemp (str): Exemplo -> 0
+    - perc_peso_sob_comissao (NoneType): Exemplo -> None
+--------------------------------------------------
+
+TABELA: FORNECEDORES
+  Status: OK. (Possui 7 colunas internas vindas do ERP)
+  Campos Encontrados:
+    - fk_pn (str): Exemplo -> 10000110221
+    - fk_usuarios_cad (str): Exemplo -> 1
+    - ind_parcelamento (str): Exemplo -> 0
+    - pk_pn_fornecedor (str): Exemplo -> 10000110221
+    - fk_gr_plano_contas (NoneType): Exemplo -> None
+    - margem_lucro_padrao (str): Exemplo -> 0.00000
+    - prazo_medio_entrega (str): Exemplo -> 0
+--------------------------------------------------
+
+TABELA: GRUPOS
+  Status: OK. (Possui 7 colunas internas vindas do ERP)
+  Campos Encontrados:
+    - cod_grupo (str): Exemplo -> 1
+    - descricao (str): Exemplo -> GERAL
+    - cod_usuario (str): Exemplo -> 4
+    - percentual_comissao (str): Exemplo -> 0.0
+    - percentual_desconto (str): Exemplo -> 3.0
+    - descontar_devol_dobro (str): Exemplo -> 0
+    - pontuacao_lista_entrega (NoneType): Exemplo -> None
+--------------------------------------------------
+
+TABELA: CX_MOVTO
+  Status: OK. (Possui 6 colunas internas vindas do ERP)
+  Campos Encontrados:
+    - seq_caixa (str): Exemplo -> 8058
+    - seq_movto (str): Exemplo -> 1
+    - data_movto (str): Exemplo -> 82295
+    - tipo_movto (str): Exemplo -> 4
+    - cod_empresa (str): Exemplo -> 1
+    - valor_operacao (str): Exemplo -> 349.00
+--------------------------------------------------
+

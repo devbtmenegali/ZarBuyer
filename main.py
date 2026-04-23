@@ -33,54 +33,75 @@ else:
 # --- Ferramentas do Agente (Para consultar a Nuvem em Tempo Real) ---
 
 async def buscar_resumo_estoque() -> str:
-    """Consulta o Supabase (tabela mercadoria_cad) e retorna um texto pro Gemini processar"""
+    """Consulta o estoque real por GRADE (cor/tamanho) e cruza com o cadastro"""
     if not supabase: return "Banco de dados indisponível."
     try:
-        # Puxa 4000 itens (ordenados pela ultima att do ERP, pra pegar as posicoes atualizadas)
-        res = supabase.table("mercadoria_cad").select("*").order("ultima_atualizacao", desc=True).limit(4000).execute()
-        mercadorias = [m.get("dados", {}) for m in res.data]
+        # Puxa o saldo real das grades (Saldo1)
+        res_grade = supabase.table("mercadoria_grade").select("*").order("ultima_atualizacao", desc=True).limit(2000).execute()
+        grades = [g.get("dados", {}) for g in res_grade.data]
         
-        # Filtra os que tem saldo pela coluna 'quantidade' (descoberto via dashboard)
-        em_estoque = [m for m in mercadorias if float(m.get('quantidade', '0')) > 0]
+        # Puxa os nomes das mercadorias para cruzamento
+        res_cad = supabase.table("mercadoria_cad").select("*").limit(2000).execute()
+        cadastro = {m.get("dados", {}).get("cod_mercadoria"): m.get("dados", {}) for m in res_cad.data}
         
-        relatorio = f"Temos {len(em_estoque)} itens diferentes em estoque.\n"
+        # Filtra os que tem saldo físico real
+        em_estoque = [g for g in grades if float(g.get('saldo1', '0')) > 0]
         
-        # Monta amostra mais robusta (até 400 produtos para o Gemini vasculhar nomes como Altenburg)
-        top_produtos = sorted(em_estoque, key=lambda x: float(x.get('quantidade', '0')), reverse=True)[:400]
-        for p in top_produtos:
-            relatorio += f"- {p.get('descricao', '?')} | Qtd:{p.get('quantidade')} | Custo: R${p.get('preco_custo')} | Varejo: R${p.get('preco_venda_varejo')} | MarcaBase:{p.get('cod_marca')}\n"
+        relatorio = f"ESTOQUE REAL DETALHADO (GRADE):\n"
+        for g in em_estoque[:300]:
+            cod = g.get('cod_mercadoria')
+            info = cadastro.get(cod, {})
+            nome = info.get('descricao', f"Cód:{cod}")
+            marca = info.get('cod_marca', 'S/M')
+            relatorio += f"- {nome} | {g.get('tamanho', '')} - {g.get('cod_cor', '')} | Qtd Real: {g.get('saldo1')} | Marca: {marca}\n"
             
-        return relatorio + "\n\n(Amostra enviada com base no volume físico disponível)."
+        return relatorio + "\n(Dados apurados pelo Saldo Físico do ERP)."
     except Exception as e:
-        return f"Erro ao acessar ERP: {e}"
+        return f"Erro ao acessar Grade/Estoque: {e}"
 
-async def buscar_vendas_hoje() -> str:
-    """Busca os ultimos 100 pedidos na tabela pv_movto"""
-    if not supabase: return "Banco de dados indisponível."
+async def buscar_pedidos_compra() -> str:
+    """Busca o que está vindo da fábrica (Pedidos de Compra)"""
+    if not supabase: return "Sem dados de fábrica."
     try:
-        # Pega 1000 ultimas atualizacoes pra ter certeza que pegou o dia inteiro (e não so um pedaço)
-        res = supabase.table("pv_movto").select("*").order("ultima_atualizacao", desc=True).limit(1000).execute()
-        todos_pedidos = [p.get("dados", {}) for p in res.data]
+        # Puxa itens de pedidos de compra ativos (pendentes de recebimento)
+        res = supabase.table("pedido_compra_item").select("*").order("ultima_atualizacao", desc=True).limit(500).execute()
+        itens = [i.get("dados", {}) for i in res.data]
         
-        # Tenta filtrar só os pedidos de HOJE pela coluna data_inclusao
-        import datetime
-        hoje = datetime.datetime.now().strftime("%Y-%m-%d")
-        pedidos = [p for p in todos_pedidos if hoje in str(p.get("data_inclusao", "")) or hoje in str(p.get("data", "")) or hoje in str(p.get("dtemissao", ""))]
+        pendentes = [i for i in itens if float(i.get('quantidade_pedida', '0')) > float(i.get('quantidade_recebida', '0'))]
         
-        if not pedidos: 
-            pedidos = todos_pedidos[:80] # Fallback se a data do ERP não bater com hoje
+        if not pendentes: return "Nenhum pedido de compra pendente na fábrica."
         
-        faturamento = sum((float(p.get('preco_total', p.get('val_liquido', '0'))) for p in pedidos))
-        
-        relatorio = f"Foram lidos {len(pedidos)} itens de pedido nas últimas atualizações.\n"
-        relatorio += f"Valor total listado bruto: R$ {faturamento:.2f}\n"
-        relatorio += "Listagem simplificada dos produtos vendidos recentemente:\n"
-        for p in pedidos[:20]: # Mostra log dos ultimos 20
-            relatorio += f"Pedido #{p.get('numero_do_pedido')} | Qtd {p.get('quantidade')} | Total: R${p.get('preco_total')}\n"
+        relatorio = "MERCADORIAS A CAMINHO (FÁBRICA):\n"
+        for i in pendentes[:100]:
+            faltam = float(i.get('quantidade_pedida', 0)) - float(i.get('quantidade_recebida', 0))
+            relatorio += f"- Cód:{i.get('cod_mercadoria')} | Faltam chegar: {faltam} un | Pedido Ref:{i.get('fk_pc')}\n"
             
         return relatorio
     except Exception as e:
-        return f"Erro ao acessar PV: {e}"
+        return f"Erro ao acessar Pedidos Compra: {e}"
+
+async def buscar_vendas_hoje() -> str:
+    """Busca as vendas registradas recentemente para análise de giro"""
+    if not supabase: return "Banco de dados indisponível."
+    try:
+        res = supabase.table("pv_movto").select("*").order("ultima_atualizacao", desc=True).limit(1000).execute()
+        todos_pedidos = [p.get("dados", {}) for p in res.data]
+        
+        # Tenta filtrar só os pedidos de HOJE
+        hoje = datetime.datetime.now().strftime("%Y-%m-%d")
+        pedidos = [p for p in todos_pedidos if hoje in str(p.get("data_inclusao", "")) or hoje in str(p.get("data", ""))]
+        
+        if not pedidos: pedidos = todos_pedidos[:50] # Fallback
+        
+        faturamento = sum((float(p.get('preco_total', p.get('val_liquido', '0'))) for p in pedidos))
+        
+        relatorio = f"VENDAS RECENTES:\nTotal listed: R$ {faturamento:.2f}\n"
+        for p in pedidos[:15]:
+            relatorio += f"Ped #{p.get('numero_do_pedido')} | Qtd {p.get('quantidade')} | R${p.get('preco_total')}\n"
+            
+        return relatorio
+    except Exception as e:
+        return f"Erro ao acessar Vendas: {e}"
 
 # --- Ferramentas de Alertas Proativos e Autenticação de Fornecedores ---
 
@@ -171,8 +192,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         system_instruction = (
             "Você é o ZAR Agent. Um executivo brilhante, analítico, formal, mas altamente direto e objetivo. "
             "Você analisa dados do ERP em tempo real para ajudar o comprador/gerente. "
+            "SEU RACIOCÍNIO DEVE SER: Vendas (Giro) vs Estoque Real vs Compras em Trânsito. "
+            "Se o giro é alto e o estoque é baixo, sugira compra. Se já houver pedido de compra pendente, apenas informe a previsão."
             "Sempre destaque números com emojis estratégicos 💰, 📦, 📈. Evite conversas longas e vá direto ao ponto."
-            "Diga a verdade nua e crua se o estoque estiver encalhado ou o lucro estiver ruim."
         )
         
         # 3. ZAR decide se precisa consultar o banco baseado na mensagem
@@ -182,10 +204,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Para saudações muito simples, ele não carrega banco, mas para o resto sim.
         if texto_lower not in ["oi", "olá", "bom dia", "boa noite", "tudo bem"]:
             # Ele SEMPRE carrega os dados caso o usuário faça qualquer pedido ou análise
-            dados_contexto += "--- DADOS DE ESTOQUE EXTRAÍDOS (TOP 400) ---\n" + await buscar_resumo_estoque() + "\n"
-            dados_contexto += "--- DADOS DE VENDAS (ULTIMOS 100 PEDIDOS) ---\n" + await buscar_vendas_hoje() + "\n"
+            dados_contexto += "--- DADOS DE ESTOQUE REAL (GRADE) ---\n" + await buscar_resumo_estoque() + "\n"
+            dados_contexto += "--- DADOS DE VENDAS (HISTÓRICO RECENTE) ---\n" + await buscar_vendas_hoje() + "\n"
+            dados_contexto += "--- PEDIDOS DE COMPRA ATIVOS (A CAMINHO) ---\n" + await buscar_pedidos_compra() + "\n"
 
-        prompt_final = f"INSTRUÇÕES AO ZAR: Analise o pedido do usuário procurando na lista que te passei se houver uma correspondência (Busque as palavras da msg dele na descrição dos produtos ou marcas). Seja detalhista.\n\n"
+        prompt_final = f"INSTRUÇÕES AO ZAR: Analise o pedido do usuário combinando Giro x Estoque x Compras. Seja um consultor implacável.\n\n"
         prompt_final += f"{dados_contexto}\n\n"
         prompt_final += f"MENSAGEM DO USUÁRIO (SEU CHEFE): {texto_usuario}"
         
