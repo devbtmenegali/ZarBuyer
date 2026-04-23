@@ -1,10 +1,9 @@
-import os
-import json
-from supabase import create_client
+from dotenv import load_dotenv
+load_dotenv()
 
-# Configurações do seu banco via .env ou direto
-SUPABASE_URL = "https://qzfmpwbsmrnnakzajtut.supabase.co"
-SUPABASE_KEY = "sb_secret_uXAeL8L1R33z4fc0rby7DA_7n4uWqsE" # Chave tirada do seu sync.py
+# Configurações do seu banco via .env (MAIS SEGURO)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 try:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
