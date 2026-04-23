@@ -44,12 +44,12 @@ async def buscar_resumo_estoque() -> str:
         
         relatorio = f"Temos {len(em_estoque)} itens diferentes em estoque.\n"
         
-        # Monta amostra dos 20 com maior estoque
-        top_produtos = sorted(em_estoque, key=lambda x: float(x.get('saldo1', '0')), reverse=True)[:20]
+        # Monta amostra mais robusta (até 400 produtos para o Gemini vasculhar nomes como Altenburg)
+        top_produtos = sorted(em_estoque, key=lambda x: float(x.get('saldo1', '0')), reverse=True)[:400]
         for p in top_produtos:
-            relatorio += f"- Produto: {p.get('descricao', '?')} | Qtd: {p.get('saldo1')} | Custo: R${p.get('preco_custo')} | Venda: R${p.get('preco_venda_varejo')}\n"
+            relatorio += f"- {p.get('descricao', '?')} | Qtd:{p.get('saldo1')} | Custo: R${p.get('preco_custo')} | Varejo: R${p.get('preco_venda_varejo')} | MarcaBase:{p.get('cod_marca')}\n"
             
-        return relatorio + "\n\n(Amostra resumida baseada nos itens de maior volume)."
+        return relatorio + "\n\n(Amostra enviada com base no volume físico disponível)."
     except Exception as e:
         return f"Erro ao acessar ERP: {e}"
 
@@ -171,13 +171,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # 3. ZAR decide se precisa consultar o banco baseado na mensagem
         dados_contexto = ""
         texto_lower = texto_usuario.lower()
-        if "estoque" in texto_lower or "produtos" in texto_lower or "temos" in texto_lower or "resumo" in texto_lower:
-            dados_contexto += "--- DADOS DE ESTOQUE EXTRAÍDOS AGORA ---\n" + await buscar_resumo_estoque() + "\n"
         
-        if "venda" in texto_lower or "lucro" in texto_lower or "pedido" in texto_lower or "hoje" in texto_lower:
-            dados_contexto += "--- DADOS DE VENDAS RECENTES ---\n" + await buscar_vendas_hoje() + "\n"
+        # Para saudações muito simples, ele não carrega banco, mas para o resto sim.
+        if texto_lower not in ["oi", "olá", "bom dia", "boa noite", "tudo bem"]:
+            # Ele SEMPRE carrega os dados caso o usuário faça qualquer pedido ou análise
+            dados_contexto += "--- DADOS DE ESTOQUE EXTRAÍDOS (TOP 400) ---\n" + await buscar_resumo_estoque() + "\n"
+            dados_contexto += "--- DADOS DE VENDAS (ULTIMOS 100 PEDIDOS) ---\n" + await buscar_vendas_hoje() + "\n"
 
-        prompt_final = f"INSTRUÇÕES AO ZAR: Analise o pedido do usuário e utilize os dados extraídos do ERP se houverem.\n\n"
+        prompt_final = f"INSTRUÇÕES AO ZAR: Analise o pedido do usuário procurando na lista que te passei se houver uma correspondência (Busque as palavras da msg dele na descrição dos produtos ou marcas). Seja detalhista.\n\n"
         prompt_final += f"{dados_contexto}\n\n"
         prompt_final += f"MENSAGEM DO USUÁRIO (SEU CHEFE): {texto_usuario}"
         
