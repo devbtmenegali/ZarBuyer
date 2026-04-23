@@ -49,26 +49,29 @@ async def buscar_resumo_estoque() -> str:
     """Consulta o estoque real por GRADE (cor/tamanho) e cruza com o cadastro"""
     if not supabase: return "Banco de dados indisponível."
     try:
-        # Puxa 1000 itens da grade para ter uma amostra real
-        res_grade = supabase.table("mercadoria_grade").select("*").order("ultima_atualizacao", desc=True).limit(1000).execute()
-        grades = [g.get("dados", {}) for g in res_grade.data]
+        # 1. Puxa o Cadastro Geral (Estoque Master)
+        res_cad = supabase.table("mercadoria_cad").select("*").limit(4000).execute()
+        produtos = [p.get("dados", {}) for p in res_cad.data]
         
-        # Puxa os dados cadastrais (Dicionário de Nomes)
-        res_cad = supabase.table("mercadoria_cad").select("*").limit(3000).execute()
-        cadastro = {m.get("dados", {}).get("cod_mercadoria"): m.get("dados", {}) for m in res_cad.data}
+        # Filtra quem tem estoque no cadastro geral
+        com_estoque = [p for p in produtos if float(p.get('saldo1', '0')) > 0]
         
-        # Filtra os que tem saldo físico real
-        em_estoque = [g for g in grades if float(g.get('saldo1', '0')) > 0 or float(g.get('saldo2', '0')) > 0]
-        
-        relatorio = f"ESTOQUE REAL DISPONÍVEL (Amostra do que há em mãos):\n"
-        for g in em_estoque[:400]:
-            cod = g.get('cod_mercadoria')
-            info = cadastro.get(cod, {})
-            nome = info.get('descricao', f"Cód:{cod}")
-            marca = info.get('cod_marca', '')
-            relatorio += f"- {nome} | Grade: {g.get('tamanho')} | Saldo: {g.get('saldo1')} | MarcaBase: {marca}\n"
+        relatorio = f"ESTOQUE GERAL DISPONÍVEL (Dados do Cadastro Master):\n"
+        for p in com_estoque[:400]:
+            relatorio += f"- {p.get('descricao')} | Saldo Total: {p.get('saldo1')} | R$ {p.get('preco_venda_varejo')}\n"
             
-        return relatorio + "\n(Dados do Saldo Físico do ERP corrigidos)."
+        # 2. Tenta puxar grades como detalhamento (Se houver)
+        try:
+            res_grade = supabase.table("mercadoria_grade").select("*").limit(500).execute()
+            if res_grade.data:
+                relatorio += "\nDETALHAMENTO POR GRADE (Cores/Tamanhos):\n"
+                for g in res_grade.data[:100]:
+                    d = g.get("dados", {})
+                    if float(d.get("saldo1", "0")) > 0:
+                        relatorio += f"  - Item {d.get('cod_mercadoria')} | Tam: {d.get('tamanho')} | Saldo: {d.get('saldo1')}\n"
+        except: pass
+
+        return relatorio if len(com_estoque) > 0 else "Estoque zerado no cadastro global."
     except Exception as e:
         return f"Erro ao acessar Grade/Estoque: {e}"
 
