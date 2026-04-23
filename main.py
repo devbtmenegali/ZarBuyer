@@ -40,15 +40,15 @@ async def buscar_resumo_estoque() -> str:
         res = supabase.table("mercadoria_cad").select("*").order("ultima_atualizacao", desc=True).limit(4000).execute()
         mercadorias = [m.get("dados", {}) for m in res.data]
         
-        # Filtra os que tem saldo
-        em_estoque = [m for m in mercadorias if float(m.get('saldo1', '0')) > 0]
+        # Filtra os que tem saldo pela coluna 'quantidade' (descoberto via dashboard)
+        em_estoque = [m for m in mercadorias if float(m.get('quantidade', '0')) > 0]
         
         relatorio = f"Temos {len(em_estoque)} itens diferentes em estoque.\n"
         
         # Monta amostra mais robusta (até 400 produtos para o Gemini vasculhar nomes como Altenburg)
-        top_produtos = sorted(em_estoque, key=lambda x: float(x.get('saldo1', '0')), reverse=True)[:400]
+        top_produtos = sorted(em_estoque, key=lambda x: float(x.get('quantidade', '0')), reverse=True)[:400]
         for p in top_produtos:
-            relatorio += f"- {p.get('descricao', '?')} | Qtd:{p.get('saldo1')} | Custo: R${p.get('preco_custo')} | Varejo: R${p.get('preco_venda_varejo')} | MarcaBase:{p.get('cod_marca')}\n"
+            relatorio += f"- {p.get('descricao', '?')} | Qtd:{p.get('quantidade')} | Custo: R${p.get('preco_custo')} | Varejo: R${p.get('preco_venda_varejo')} | MarcaBase:{p.get('cod_marca')}\n"
             
         return relatorio + "\n\n(Amostra enviada com base no volume físico disponível)."
     except Exception as e:
@@ -62,15 +62,15 @@ async def buscar_vendas_hoje() -> str:
         res = supabase.table("pv_movto").select("*").order("ultima_atualizacao", desc=True).limit(1000).execute()
         todos_pedidos = [p.get("dados", {}) for p in res.data]
         
-        # Tenta filtrar só os pedidos de HOJE
+        # Tenta filtrar só os pedidos de HOJE pela coluna data_inclusao
         import datetime
         hoje = datetime.datetime.now().strftime("%Y-%m-%d")
-        pedidos = [p for p in todos_pedidos if hoje in str(p.get("data", "")) or hoje in str(p.get("dtemissao", "")) or hoje in str(p.get("data_venda", ""))]
+        pedidos = [p for p in todos_pedidos if hoje in str(p.get("data_inclusao", "")) or hoje in str(p.get("data", "")) or hoje in str(p.get("dtemissao", ""))]
         
         if not pedidos: 
             pedidos = todos_pedidos[:80] # Fallback se a data do ERP não bater com hoje
         
-        faturamento = sum((float(p.get('val_liquido', p.get('preco_total', '0'))) for p in pedidos))
+        faturamento = sum((float(p.get('preco_total', p.get('val_liquido', '0'))) for p in pedidos))
         
         relatorio = f"Foram lidos {len(pedidos)} itens de pedido nas últimas atualizações.\n"
         relatorio += f"Valor total listado bruto: R$ {faturamento:.2f}\n"
