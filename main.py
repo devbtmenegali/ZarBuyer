@@ -9,8 +9,21 @@ import datetime
 # Use a biblioteca oficial (nova) do google-genai
 from google import genai
 from google.genai import types
+from datetime import datetime, timedelta
 
 load_dotenv()
+
+def sisgem_to_date(sisgem_val):
+    """Converte o inteiro do Sisgem (Dias desde 1800 ou similar) para data real"""
+    try:
+        val = int(float(str(sisgem_val)))
+        # Base descoberta por engenharia reversa: 82295 = 23/04/2024
+        # Referencia fixa: 23/04/2024 (82295)
+        base_date = datetime(2024, 4, 23)
+        offset = val - 82295
+        return (base_date + timedelta(days=offset)).strftime("%Y-%m-%d")
+    except:
+        return str(sisgem_val)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
@@ -36,26 +49,26 @@ async def buscar_resumo_estoque() -> str:
     """Consulta o estoque real por GRADE (cor/tamanho) e cruza com o cadastro"""
     if not supabase: return "Banco de dados indisponível."
     try:
-        # Puxa o saldo real das grades (Saldo1)
-        res_grade = supabase.table("mercadoria_grade").select("*").order("ultima_atualizacao", desc=True).limit(2000).execute()
+        # Puxa 1000 itens da grade para ter uma amostra real
+        res_grade = supabase.table("mercadoria_grade").select("*").order("ultima_atualizacao", desc=True).limit(1000).execute()
         grades = [g.get("dados", {}) for g in res_grade.data]
         
-        # Puxa os nomes das mercadorias para cruzamento
-        res_cad = supabase.table("mercadoria_cad").select("*").limit(2000).execute()
+        # Puxa os dados cadastrais (Dicionário de Nomes)
+        res_cad = supabase.table("mercadoria_cad").select("*").limit(3000).execute()
         cadastro = {m.get("dados", {}).get("cod_mercadoria"): m.get("dados", {}) for m in res_cad.data}
         
         # Filtra os que tem saldo físico real
-        em_estoque = [g for g in grades if float(g.get('saldo1', '0')) > 0]
+        em_estoque = [g for g in grades if float(g.get('saldo1', '0')) > 0 or float(g.get('saldo2', '0')) > 0]
         
-        relatorio = f"ESTOQUE REAL DETALHADO (GRADE):\n"
-        for g in em_estoque[:300]:
+        relatorio = f"ESTOQUE REAL DISPONÍVEL (Amostra do que há em mãos):\n"
+        for g in em_estoque[:400]:
             cod = g.get('cod_mercadoria')
             info = cadastro.get(cod, {})
             nome = info.get('descricao', f"Cód:{cod}")
-            marca = info.get('cod_marca', 'S/M')
-            relatorio += f"- {nome} | {g.get('tamanho', '')} - {g.get('cod_cor', '')} | Qtd Real: {g.get('saldo1')} | Marca: {marca}\n"
+            marca = info.get('cod_marca', '')
+            relatorio += f"- {nome} | Grade: {g.get('tamanho')} | Saldo: {g.get('saldo1')} | MarcaBase: {marca}\n"
             
-        return relatorio + "\n(Dados apurados pelo Saldo Físico do ERP)."
+        return relatorio + "\n(Dados do Saldo Físico do ERP corrigidos)."
     except Exception as e:
         return f"Erro ao acessar Grade/Estoque: {e}"
 
@@ -85,13 +98,18 @@ async def buscar_vendas_hoje() -> str:
     if not supabase: return "Banco de dados indisponível."
     try:
         res = supabase.table("pv_movto").select("*").order("ultima_atualizacao", desc=True).limit(1000).execute()
-        todos_pedidos = [p.get("dados", {}) for p in res.data]
+        # Aplica a tradução de data do Sisgem antes de processar
+        pedidos = []
+        hoje = datetime.now().strftime("%Y-%m-%d")
         
-        # Tenta filtrar só os pedidos de HOJE
-        hoje = datetime.datetime.now().strftime("%Y-%m-%d")
-        pedidos = [p for p in todos_pedidos if hoje in str(p.get("data_inclusao", "")) or hoje in str(p.get("data", ""))]
+        for p in todos_pedidos:
+            # Tenta traduzir a data_inclusao (numerica) para data real
+            p["data_real"] = sisgem_to_date(p.get("data_inclusao", p.get("data", "")))
+            if p["data_real"] == hoje:
+                pedidos.append(p)
         
-        if not pedidos: pedidos = todos_pedidos[:50] # Fallback
+        if not pedidos: 
+            pedidos = todos_pedidos[:100] # Fallback apenas se não houver faturamento hoje
         
         faturamento = sum((float(p.get('preco_total', p.get('val_liquido', '0'))) for p in pedidos))
         
@@ -102,6 +120,31 @@ async def buscar_vendas_hoje() -> str:
         return relatorio
     except Exception as e:
         return f"Erro ao acessar Vendas: {e}"
+
+async def buscar_mercadoria_por_termo(termo: str) -> str:
+    """Busca específica no banco por nome da marca ou produto (A Lupa)"""
+    if not supabase or not termo or len(termo) < 3: return ""
+    try:
+        # Busca no cadastro pelo termo (Case Insensitive via ilike no Supabase)
+        # Como o dado está dentro de JSON, fazemos um filtro inteligente
+        res = supabase.table("mercadoria_cad").select("*").execute()
+        
+        # Filtro em Python para garantir precisão no campo 'dados'
+        encontrados = []
+        for r in res.data:
+            dados = r.get("dados", {})
+            if termo.upper() in str(dados.get("descricao", "")).upper() or termo.upper() in str(dados.get("cod_marca", "")).upper():
+                encontrados.append(dados)
+        
+        if not encontrados: return f"\n(Busca por '{termo}': Nenhum item encontrado em toda a base)."
+        
+        relatorio = f"\nRESULTADOS DA LUPA PARA '{termo}':\n"
+        for p in encontrados[:50]: # Retorna até 50 correspondencias exatas
+            relatorio += f"- {p.get('descricao')} | R$ {p.get('preco_venda_varejo')} | Cód:{p.get('cod_mercadoria')}\n"
+        
+        return relatorio
+    except Exception as e:
+        return f"\n(Erro na busca profunda: {e})"
 
 # --- Ferramentas de Alertas Proativos e Autenticação de Fornecedores ---
 
@@ -203,12 +246,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         # Para saudações muito simples, ele não carrega banco, mas para o resto sim.
         if texto_lower not in ["oi", "olá", "bom dia", "boa noite", "tudo bem"]:
-            # Ele SEMPRE carrega os dados caso o usuário faça qualquer pedido ou análise
+            # Ele SEMPRE carrega os dados básicos
             dados_contexto += "--- DADOS DE ESTOQUE REAL (GRADE) ---\n" + await buscar_resumo_estoque() + "\n"
-            dados_contexto += "--- DADOS DE VENDAS (HISTÓRICO RECENTE) ---\n" + await buscar_vendas_hoje() + "\n"
-            dados_contexto += "--- PEDIDOS DE COMPRA ATIVOS (A CAMINHO) ---\n" + await buscar_pedidos_compra() + "\n"
+            dados_contexto += "--- DADOS DE VENDAS (HOJE) ---\n" + await buscar_vendas_hoje() + "\n"
+            dados_contexto += "--- PEDIDOS DE COMPRA ATIVOS (FÁBRICA) ---\n" + await buscar_pedidos_compra() + "\n"
+            
+            # 💡 A LUPA: Se o usuário citar nomes (ex: Bella Janela, Altenburg, Tapete), o ZAR faz busca profunda
+            palavras = texto_usuario.split()
+            keywords = [p for p in palavras if len(p) > 3 and p.lower() not in ["venda", "estoque", "resumo", "hoje", "quanto"]]
+            for kw in keywords[:2]: # Pega as 2 palavras principais pra não sobrecarregar
+                dados_contexto += await buscar_mercadoria_por_termo(kw)
 
-        prompt_final = f"INSTRUÇÕES AO ZAR: Analise o pedido do usuário combinando Giro x Estoque x Compras. Seja um consultor implacável.\n\n"
+        prompt_final = f"INSTRUÇÕES AO ZAR: Analise o pedido do usuário combinando Giro x Estoque x Compras. Preste atenção especial aos resultados da LUPA se houver.\n\n"
         prompt_final += f"{dados_contexto}\n\n"
         prompt_final += f"MENSAGEM DO USUÁRIO (SEU CHEFE): {texto_usuario}"
         
