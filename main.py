@@ -36,7 +36,8 @@ async def buscar_resumo_estoque() -> str:
     """Consulta o Supabase (tabela mercadoria_cad) e retorna um texto pro Gemini processar"""
     if not supabase: return "Banco de dados indisponível."
     try:
-        res = supabase.table("mercadoria_cad").select("*").limit(2000).execute()
+        # Puxa 4000 itens (ordenados pela ultima att do ERP, pra pegar as posicoes atualizadas)
+        res = supabase.table("mercadoria_cad").select("*").order("ultima_atualizacao", desc=True).limit(4000).execute()
         mercadorias = [m.get("dados", {}) for m in res.data]
         
         # Filtra os que tem saldo
@@ -57,13 +58,19 @@ async def buscar_vendas_hoje() -> str:
     """Busca os ultimos 100 pedidos na tabela pv_movto"""
     if not supabase: return "Banco de dados indisponível."
     try:
-        # Pega as últimas 100 linhas (que são os pedidos mais recentes graças ao trigger do ERP)
-        res = supabase.table("pv_movto").select("*").order("ultima_atualizacao", desc=True).limit(100).execute()
-        pedidos = [p.get("dados", {}) for p in res.data]
+        # Pega 1000 ultimas atualizacoes pra ter certeza que pegou o dia inteiro (e não so um pedaço)
+        res = supabase.table("pv_movto").select("*").order("ultima_atualizacao", desc=True).limit(1000).execute()
+        todos_pedidos = [p.get("dados", {}) for p in res.data]
         
-        if not pedidos: return "Nenhum pedido recente registrado."
+        # Tenta filtrar só os pedidos de HOJE
+        import datetime
+        hoje = datetime.datetime.now().strftime("%Y-%m-%d")
+        pedidos = [p for p in todos_pedidos if hoje in str(p.get("data", "")) or hoje in str(p.get("dtemissao", "")) or hoje in str(p.get("data_venda", ""))]
         
-        faturamento = sum((float(p.get('preco_total', '0')) for p in pedidos))
+        if not pedidos: 
+            pedidos = todos_pedidos[:80] # Fallback se a data do ERP não bater com hoje
+        
+        faturamento = sum((float(p.get('val_liquido', p.get('preco_total', '0'))) for p in pedidos))
         
         relatorio = f"Foram lidos {len(pedidos)} itens de pedido nas últimas atualizações.\n"
         relatorio += f"Valor total listado bruto: R$ {faturamento:.2f}\n"
